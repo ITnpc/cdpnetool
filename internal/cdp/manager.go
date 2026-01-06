@@ -22,15 +22,18 @@ import (
 )
 
 type Manager struct {
-	devtoolsURL string
-	conn        *rpcc.Conn
-	client      *cdp.Client
-	ctx         context.Context
-	cancel      context.CancelFunc
-	events      chan model.Event
-	pending     chan any
-	engine      *rules.Engine
-	approvals   map[string]chan model.Rewrite
+	devtoolsURL       string
+	conn              *rpcc.Conn
+	client            *cdp.Client
+	ctx               context.Context
+	cancel            context.CancelFunc
+	events            chan model.Event
+	pending           chan any
+	engine            *rules.Engine
+	approvals         map[string]chan model.Rewrite
+	workers           int
+	bodySizeThreshold int64
+	processTimeoutMS  int
 }
 
 func New(devtoolsURL string, events chan model.Event, pending chan any) *Manager {
@@ -111,18 +114,35 @@ func (m *Manager) consume() {
 		return
 	}
 	defer rp.Close()
+	var sem chan struct{}
+	if m.workers > 0 {
+		sem = make(chan struct{}, m.workers)
+	}
 	for {
 		ev, err := rp.Recv()
 		if err != nil {
 			return
 		}
-		m.handle(ev)
+		if sem != nil {
+			sem <- struct{}{}
+			go func(e *fetch.RequestPausedReply) {
+				defer func() { <-sem }()
+				m.handle(e)
+			}(ev)
+		} else {
+			go m.handle(ev)
+		}
 	}
 }
 
 func (m *Manager) handle(ev *fetch.RequestPausedReply) {
-	ctx, cancel := context.WithTimeout(m.ctx, 3*time.Second)
+	to := m.processTimeoutMS
+	if to <= 0 {
+		to = 3000
+	}
+	ctx, cancel := context.WithTimeout(m.ctx, time.Duration(to)*time.Millisecond)
 	defer cancel()
+	start := time.Now()
 	m.events <- model.Event{Type: "intercepted"}
 	stg := "request"
 	if ev.ResponseStatusCode != nil {
@@ -137,6 +157,11 @@ func (m *Manager) handle(ev *fetch.RequestPausedReply) {
 	if a.DelayMS > 0 {
 		time.Sleep(time.Duration(a.DelayMS) * time.Millisecond)
 	}
+	if time.Since(start) > time.Duration(to)*time.Millisecond {
+		m.applyContinue(ctx, ev, stg)
+		m.events <- model.Event{Type: "degraded"}
+		return
+	}
 	if a.Pause != nil {
 		m.applyPause(ctx, ev, a.Pause, stg)
 		return
@@ -147,7 +172,7 @@ func (m *Manager) handle(ev *fetch.RequestPausedReply) {
 		return
 	}
 	if a.Respond != nil {
-		m.applyRespond(ctx, ev, a.Respond)
+		m.applyRespond(ctx, ev, a.Respond, stg)
 		m.events <- model.Event{Type: "fulfilled", Rule: res.RuleID}
 		return
 	}
@@ -166,6 +191,8 @@ func (m *Manager) decide(ev *fetch.RequestPausedReply, stage string) *rules.Resu
 	h := map[string]string{}
 	q := map[string]string{}
 	ck := map[string]string{}
+	var bodyText string
+	var ctype string
 	if stage == "response" {
 		if len(ev.ResponseHeaders) > 0 {
 			for i := range ev.ResponseHeaders {
@@ -177,6 +204,29 @@ func (m *Manager) decide(ev *fetch.RequestPausedReply, stage string) *rules.Resu
 					if name != "" {
 						ck[strings.ToLower(name)] = val
 					}
+				}
+				if strings.EqualFold(k, "content-type") {
+					ctype = v
+				}
+			}
+		}
+		var clen int64
+		if v, ok := h["content-length"]; ok {
+			if n, err := parseInt64(v); err == nil {
+				clen = n
+			}
+		}
+		if shouldGetBody(ctype, clen, m.bodySizeThreshold) {
+			ctx2, cancel := context.WithTimeout(m.ctx, 500*time.Millisecond)
+			defer cancel()
+			rb, err := m.client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: ev.RequestID})
+			if err == nil && rb != nil {
+				if rb.Base64Encoded {
+					if b, err := base64.StdEncoding.DecodeString(rb.Body); err == nil {
+						bodyText = string(b)
+					}
+				} else {
+					bodyText = rb.Body
 				}
 			}
 		}
@@ -203,8 +253,14 @@ func (m *Manager) decide(ev *fetch.RequestPausedReply, stage string) *rules.Resu
 				ck[strings.ToLower(name)] = val
 			}
 		}
+		if v, ok := h["content-type"]; ok {
+			ctype = v
+		}
+		if ev.Request.PostData != nil {
+			bodyText = *ev.Request.PostData
+		}
 	}
-	res := m.engine.Eval(rules.Ctx{URL: ev.Request.URL, Method: ev.Request.Method, Headers: h, Query: q, Cookies: ck, Stage: stage})
+	res := m.engine.Eval(rules.Ctx{URL: ev.Request.URL, Method: ev.Request.Method, Headers: h, Query: q, Cookies: ck, Body: bodyText, ContentType: ctype, Stage: stage})
 	if res == nil {
 		return nil
 	}
@@ -251,6 +307,36 @@ func urlParse(raw string, qpatch map[string]*string) (*url.URL, error) {
 	return u, nil
 }
 
+func shouldGetBody(ctype string, clen int64, thr int64) bool {
+	if thr <= 0 {
+		thr = 4 * 1024 * 1024
+	}
+	if clen > 0 && clen > thr {
+		return false
+	}
+	lc := strings.ToLower(ctype)
+	if strings.HasPrefix(lc, "text/") {
+		return true
+	}
+	if strings.HasPrefix(lc, "application/json") {
+		return true
+	}
+	return false
+}
+
+func parseInt64(s string) (int64, error) {
+	var n int64
+	var mul int64 = 1
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("invalid")
+		}
+		n = n*10 + int64(c-'0')
+	}
+	return n * mul, nil
+}
+
 func (m *Manager) applyContinue(ctx context.Context, ev *fetch.RequestPausedReply, stage string) {
 	if stage == "response" {
 		m.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
@@ -265,7 +351,20 @@ func (m *Manager) applyFail(ctx context.Context, ev *fetch.RequestPausedReply, f
 	m.client.Fetch.FailRequest(ctx, &fetch.FailRequestArgs{RequestID: ev.RequestID, ErrorReason: network.ErrorReasonFailed})
 }
 
-func (m *Manager) applyRespond(ctx context.Context, ev *fetch.RequestPausedReply, r *model.Respond) {
+func (m *Manager) applyRespond(ctx context.Context, ev *fetch.RequestPausedReply, r *model.Respond, stage string) {
+	if stage == "response" && len(r.Body) == 0 {
+		// 仅修改响应码/头，继续响应
+		args := &fetch.ContinueResponseArgs{RequestID: ev.RequestID}
+		if r.Status != 0 {
+			args.ResponseCode = &r.Status
+		}
+		if len(r.Headers) > 0 {
+			args.ResponseHeaders = toHeaderEntries(r.Headers)
+		}
+		m.client.Fetch.ContinueResponse(ctx, args)
+		return
+	}
+	// fulfill 完整响应
 	args := &fetch.FulfillRequestArgs{RequestID: ev.RequestID, ResponseCode: r.Status}
 	if len(r.Headers) > 0 {
 		args.ResponseHeaders = toHeaderEntries(r.Headers)
@@ -376,6 +475,14 @@ func (m *Manager) applyRewrite(ctx context.Context, ev *fetch.RequestPausedReply
 					}
 				}
 			}
+		case "json_patch":
+			var src string
+			if ev.Request.PostData != nil {
+				src = *ev.Request.PostData
+			}
+			if out, ok := applyJSONPatch(src, rw.Body.Ops); ok {
+				post = []byte(out)
+			}
 		}
 	}
 	args := &fetch.ContinueRequestArgs{RequestID: ev.RequestID, URL: url, Method: method, Headers: hdrs}
@@ -391,6 +498,146 @@ func (m *Manager) applyRewrite(ctx context.Context, ev *fetch.RequestPausedReply
 	m.client.Fetch.ContinueRequest(ctx, args)
 }
 
+func applyJSONPatch(doc string, ops []any) (string, bool) {
+	var v any
+	if doc == "" {
+		v = make(map[string]any)
+	} else {
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			return "", false
+		}
+	}
+	for _, op := range ops {
+		m, ok := op.(map[string]any)
+		if !ok {
+			continue
+		}
+		typ, _ := m["op"].(string)
+		path, _ := m["path"].(string)
+		val := m["value"]
+		switch typ {
+		case "add", "replace":
+			v = setByPtr(v, path, val, typ == "replace")
+		case "remove":
+			v = removeByPtr(v, path)
+		}
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", false
+	}
+	return string(b), true
+}
+
+func setByPtr(cur any, ptr string, val any, replace bool) any {
+	if ptr == "" || ptr[0] != '/' {
+		return cur
+	}
+	tokens := splitPtr(ptr)
+	return setRec(cur, tokens, val)
+}
+
+func setRec(cur any, tokens []string, val any) any {
+	if len(tokens) == 0 {
+		return val
+	}
+	t := tokens[0]
+	switch c := cur.(type) {
+	case map[string]any:
+		child, ok := c[t]
+		if !ok {
+			child = make(map[string]any)
+		}
+		c[t] = setRec(child, tokens[1:], val)
+		return c
+	case []any:
+		idx, ok := toIndex(t)
+		if !ok || idx < 0 || idx >= len(c) {
+			return c
+		}
+		c[idx] = setRec(c[idx], tokens[1:], val)
+		return c
+	default:
+		if len(tokens) == 1 {
+			return val
+		}
+		return cur
+	}
+}
+
+func removeByPtr(cur any, ptr string) any {
+	if ptr == "" || ptr[0] != '/' {
+		return cur
+	}
+	tokens := splitPtr(ptr)
+	return removeRec(cur, tokens)
+}
+
+func removeRec(cur any, tokens []string) any {
+	if len(tokens) == 0 {
+		return cur
+	}
+	t := tokens[0]
+	switch c := cur.(type) {
+	case map[string]any:
+		if len(tokens) == 1 {
+			delete(c, t)
+			return c
+		}
+		child, ok := c[t]
+		if !ok {
+			return c
+		}
+		c[t] = removeRec(child, tokens[1:])
+		return c
+	case []any:
+		idx, ok := toIndex(t)
+		if !ok || idx < 0 || idx >= len(c) {
+			return c
+		}
+		if len(tokens) == 1 {
+			nc := append(c[:idx], c[idx+1:]...)
+			return nc
+		}
+		c[idx] = removeRec(c[idx], tokens[1:])
+		return c
+	default:
+		return cur
+	}
+}
+
+func splitPtr(p string) []string {
+	var out []string
+	i := 1
+	for i < len(p) {
+		j := i
+		for j < len(p) && p[j] != '/' {
+			j++
+		}
+		tok := p[i:j]
+		tok = strings.ReplaceAll(tok, "~1", "/")
+		tok = strings.ReplaceAll(tok, "~0", "~")
+		out = append(out, tok)
+		i = j + 1
+	}
+	return out
+}
+
+func toIndex(s string) (int, bool) {
+	n := 0
+	if len(s) == 0 {
+		return 0, false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, true
+}
+
 func toHeaderEntries(h map[string]string) []fetch.HeaderEntry {
 	out := make([]fetch.HeaderEntry, 0, len(h))
 	for k, v := range h {
@@ -404,7 +651,23 @@ func (m *Manager) applyPause(ctx context.Context, ev *fetch.RequestPausedReply, 
 	ch := make(chan model.Rewrite, 1)
 	m.approvals[id] = ch
 	if m.pending != nil {
-		m.pending <- struct{ ID string }{ID: id}
+		select {
+		case m.pending <- struct{ ID string }{ID: id}:
+		default:
+			switch p.DefaultAction.Type {
+			case "fulfill":
+				m.applyRespond(ctx, ev, &model.Respond{Status: p.DefaultAction.Status}, stage)
+			case "fail":
+				m.applyFail(ctx, ev, &model.Fail{Reason: p.DefaultAction.Reason})
+			case "continue_mutated":
+				m.applyContinue(ctx, ev, stage)
+			default:
+				m.applyContinue(ctx, ev, stage)
+			}
+			m.events <- model.Event{Type: "degraded"}
+			delete(m.approvals, id)
+			return
+		}
 	}
 	t := time.NewTimer(time.Duration(p.TimeoutMS) * time.Millisecond)
 	select {
@@ -414,7 +677,7 @@ func (m *Manager) applyPause(ctx context.Context, ev *fetch.RequestPausedReply, 
 	case <-t.C:
 		switch p.DefaultAction.Type {
 		case "fulfill":
-			m.applyRespond(ctx, ev, &model.Respond{Status: p.DefaultAction.Status})
+			m.applyRespond(ctx, ev, &model.Respond{Status: p.DefaultAction.Status}, stage)
 		case "fail":
 			m.applyFail(ctx, ev, &model.Fail{Reason: p.DefaultAction.Reason})
 		case "continue_mutated":
@@ -440,4 +703,11 @@ func (m *Manager) Approve(itemID string, mutations model.Rewrite) {
 	if ch, ok := m.approvals[itemID]; ok {
 		ch <- mutations
 	}
+}
+
+func (m *Manager) SetConcurrency(n int) { m.workers = n }
+
+func (m *Manager) SetRuntime(bodySizeThreshold int64, processTimeoutMS int) {
+	m.bodySizeThreshold = bodySizeThreshold
+	m.processTimeoutMS = processTimeoutMS
 }

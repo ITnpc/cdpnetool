@@ -38,6 +38,8 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 		pending: make(chan any, cfg.PendingCapacity),
 	}
 	ses.mgr = cdp.New(cfg.DevToolsURL, ses.events, ses.pending)
+	ses.mgr.SetConcurrency(cfg.Concurrency)
+	ses.mgr.SetRuntime(cfg.BodySizeThreshold, cfg.ProcessTimeoutMS)
 	s.sessions[id] = ses
 	ilog.L().Info("start_session", "session", string(id), "devtools", cfg.DevToolsURL, "concurrency", cfg.Concurrency, "pending", cfg.PendingCapacity)
 	return id, nil
@@ -71,6 +73,8 @@ func (s *svc) AttachTarget(id model.SessionID, target model.TargetID) error {
 	}
 	if ses.mgr == nil {
 		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, ses.pending)
+		ses.mgr.SetConcurrency(ses.cfg.Concurrency)
+		ses.mgr.SetRuntime(ses.cfg.BodySizeThreshold, ses.cfg.ProcessTimeoutMS)
 	}
 	err := ses.mgr.AttachTarget(target)
 	if err == nil {

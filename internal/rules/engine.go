@@ -1,6 +1,8 @@
 package rules
 
 import (
+	"encoding/json"
+	"strconv"
 	"strings"
 
 	"cdpnetool/pkg/model"
@@ -15,12 +17,14 @@ func New(rs model.RuleSet) *Engine { return &Engine{rs: rs} }
 func (e *Engine) Update(rs model.RuleSet) { e.rs = rs }
 
 type Ctx struct {
-	URL     string
-	Method  string
-	Headers map[string]string
-	Query   map[string]string
-	Cookies map[string]string
-	Stage   string
+	URL         string
+	Method      string
+	Headers     map[string]string
+	Query       map[string]string
+	Cookies     map[string]string
+	Body        string
+	ContentType string
+	Stage       string
 }
 
 type Result struct {
@@ -150,9 +154,129 @@ func cond(ctx Ctx, c model.Condition) bool {
 		default:
 			return true
 		}
+	case "text":
+		if ctx.Body == "" {
+			return false
+		}
+		switch c.Op {
+		case "equals":
+			return ctx.Body == c.Value
+		case "contains":
+			return strings.Contains(ctx.Body, c.Value)
+		case "regex":
+			return matchRegex(ctx.Body, c.Value)
+		default:
+			return true
+		}
+	case "json_pointer":
+		if ctx.Body == "" {
+			return false
+		}
+		val, ok := jsonPointer(ctx.Body, c.Pointer)
+		if !ok {
+			return false
+		}
+		s := val
+		switch c.Op {
+		case "equals":
+			return s == c.Value
+		case "contains":
+			return strings.Contains(s, c.Value)
+		case "regex":
+			return matchRegex(s, c.Value)
+		default:
+			return true
+		}
 	default:
 		return false
 	}
+}
+
+func jsonPointer(body, ptr string) (string, bool) {
+	var v any
+	if err := json.Unmarshal([]byte(body), &v); err != nil {
+		return "", false
+	}
+	if ptr == "" || ptr[0] != '/' {
+		return "", false
+	}
+	cur := v
+	tokens := splitPtr(ptr)
+	for _, t := range tokens {
+		switch c := cur.(type) {
+		case map[string]any:
+			tv, ok := c[t]
+			if !ok {
+				return "", false
+			}
+			cur = tv
+		case []any:
+			idx, ok := toIndex(t)
+			if !ok || idx < 0 || idx >= len(c) {
+				return "", false
+			}
+			cur = c[idx]
+		default:
+			return "", false
+		}
+	}
+	switch x := cur.(type) {
+	case string:
+		return x, true
+	case float64:
+		return formatFloat(x), true
+	case bool:
+		if x {
+			return "true", true
+		} else {
+			return "false", true
+		}
+	default:
+		b, err := json.Marshal(x)
+		if err != nil {
+			return "", false
+		}
+		return string(b), true
+	}
+}
+
+func splitPtr(p string) []string {
+	var out []string
+	i := 1
+	for i < len(p) {
+		j := i
+		for j < len(p) && p[j] != '/' {
+			j++
+		}
+		tok := p[i:j]
+		tok = strings.ReplaceAll(tok, "~1", "/")
+		tok = strings.ReplaceAll(tok, "~0", "~")
+		out = append(out, tok)
+		i = j + 1
+	}
+	return out
+}
+
+func toIndex(s string) (int, bool) {
+	n := 0
+	if len(s) == 0 {
+		return 0, false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, true
+}
+
+func formatFloat(f float64) string {
+	if float64(int64(f)) == f {
+		return strconv.FormatInt(int64(f), 10)
+	}
+	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
 func matchRegex(s, pattern string) bool {
