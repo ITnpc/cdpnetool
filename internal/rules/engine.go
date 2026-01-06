@@ -18,6 +18,8 @@ type Ctx struct {
 	URL     string
 	Method  string
 	Headers map[string]string
+	Query   map[string]string
+	Cookies map[string]string
 	Stage   string
 }
 
@@ -105,6 +107,36 @@ func cond(ctx Ctx, c model.Condition) bool {
 		return false
 	case "header":
 		v, ok := ctx.Headers[c.Key]
+		if !ok {
+			return false
+		}
+		switch c.Op {
+		case "equals":
+			return v == c.Value
+		case "contains":
+			return strings.Contains(v, c.Value)
+		case "regex":
+			return matchRegex(v, c.Value)
+		default:
+			return true
+		}
+	case "query":
+		v, ok := ctx.Query[c.Key]
+		if !ok {
+			return false
+		}
+		switch c.Op {
+		case "equals":
+			return v == c.Value
+		case "contains":
+			return strings.Contains(v, c.Value)
+		case "regex":
+			return matchRegex(v, c.Value)
+		default:
+			return true
+		}
+	case "cookie":
+		v, ok := ctx.Cookies[c.Key]
 		if !ok {
 			return false
 		}
