@@ -10,6 +10,17 @@ type BodyPatchType string
 type PauseStage string
 type PauseDefaultActionType string
 
+type JSONPatchOpType string
+
+const (
+	JSONPatchOpAdd     JSONPatchOpType = "add"
+	JSONPatchOpRemove  JSONPatchOpType = "remove"
+	JSONPatchOpReplace JSONPatchOpType = "replace"
+	JSONPatchOpMove    JSONPatchOpType = "move"
+	JSONPatchOpCopy    JSONPatchOpType = "copy"
+	JSONPatchOpTest    JSONPatchOpType = "test"
+)
+
 const (
 	ConditionTypeURL         ConditionType = "url"
 	ConditionTypeMethod      ConditionType = "method"

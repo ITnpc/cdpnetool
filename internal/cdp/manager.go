@@ -689,29 +689,35 @@ func applyJSONPatch(doc string, ops []any) (string, bool) {
 		if !ok {
 			continue
 		}
-		typ, _ := m["op"].(string)
+		var typ string
+		switch v := m["op"].(type) {
+		case string:
+			typ = v
+		case rulespec.JSONPatchOpType:
+			typ = string(v)
+		}
 		path, _ := m["path"].(string)
 		val := m["value"]
 		from, _ := m["from"].(string)
 		switch typ {
-		case "add", "replace":
-			v = setByPtr(v, path, val, typ == "replace")
-		case "remove":
+		case string(rulespec.JSONPatchOpAdd), string(rulespec.JSONPatchOpReplace):
+			v = setByPtr(v, path, val, typ == string(rulespec.JSONPatchOpReplace))
+		case string(rulespec.JSONPatchOpRemove):
 			v = removeByPtr(v, path)
-		case "copy":
+		case string(rulespec.JSONPatchOpCopy):
 			src, ok := getByPtr(v, from)
 			if !ok {
 				return "", false
 			}
 			v = setByPtr(v, path, src, true)
-		case "move":
+		case string(rulespec.JSONPatchOpMove):
 			src, ok := getByPtr(v, from)
 			if !ok {
 				return "", false
 			}
 			v = removeByPtr(v, from)
 			v = setByPtr(v, path, src, true)
-		case "test":
+		case string(rulespec.JSONPatchOpTest):
 			cur, ok := getByPtr(v, path)
 			if !ok {
 				return "", false
