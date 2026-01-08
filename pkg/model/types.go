@@ -45,3 +45,20 @@ type TargetInfo struct {
 	IsCurrent bool     `json:"isCurrent"`
 	IsUser    bool     `json:"isUser"`
 }
+
+// InterceptedRequest 领域模型：被拦截的请求/响应
+type InterceptedRequest struct {
+	RequestID string
+	Stage     string // "request" or "response"
+	URL       string
+	Method    string
+
+	// 请求阶段
+	RequestHeaders map[string]string
+	PostData       *string
+
+	// 响应阶段
+	ResponseStatusCode *int
+	ResponseHeaders    map[string]string
+	ResponseBody       *string
+}
