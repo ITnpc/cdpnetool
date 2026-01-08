@@ -25,6 +25,13 @@ import (
 	"github.com/mafredri/cdp/rpcc"
 )
 
+type workspaceMode int
+
+const (
+	workspaceModeAutoFollow workspaceMode = iota
+	workspaceModeFixed
+)
+
 type Manager struct {
 	devtoolsURL       string
 	conn              *rpcc.Conn
@@ -44,7 +51,7 @@ type Manager struct {
 	currentTarget     model.TargetID
 	fixedTarget       model.TargetID
 	workspaceStop     chan struct{}
-	knownTargets      map[model.TargetID]struct{}
+	mode              workspaceMode
 }
 
 // New 创建并返回一个管理器，用于管理CDP连接与拦截流程
@@ -53,12 +60,12 @@ func New(devtoolsURL string, events chan model.Event, pending chan any, l logger
 		l = logger.NewNoopLogger()
 	}
 	return &Manager{
-		devtoolsURL:  devtoolsURL,
-		events:       events,
-		pending:      pending,
-		approvals:    make(map[string]chan rulespec.Rewrite),
-		log:          l,
-		knownTargets: make(map[model.TargetID]struct{}),
+		devtoolsURL: devtoolsURL,
+		events:      events,
+		pending:     pending,
+		approvals:   make(map[string]chan rulespec.Rewrite),
+		log:         l,
+		mode:        workspaceModeAutoFollow,
 	}
 }
 
@@ -69,8 +76,10 @@ func (m *Manager) AttachTarget(target model.TargetID) error {
 	m.log.Info("开始附加浏览器目标", "devtools", m.devtoolsURL, "target", string(target))
 	if target != "" {
 		m.fixedTarget = target
+		m.mode = workspaceModeFixed
 	} else {
 		m.fixedTarget = ""
+		m.mode = workspaceModeAutoFollow
 	}
 	if m.cancel != nil {
 		m.cancel()
@@ -81,30 +90,9 @@ func (m *Manager) AttachTarget(target model.TargetID) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.ctx = ctx
 	m.cancel = cancel
-	dt := devtool.New(m.devtoolsURL)
-	targets, err := dt.List(ctx)
+	sel, err := m.resolveTarget(ctx, target)
 	if err != nil {
-		m.log.Error("获取浏览器目标列表失败", "error", err)
 		return err
-	}
-	var sel *devtool.Target
-	if target != "" {
-		for i := range targets {
-			if string(targets[i].ID) == string(target) {
-				sel = targets[i]
-				break
-			}
-		}
-	} else {
-		for i := len(targets) - 1; i >= 0; i-- {
-			if targets[i].Type == "page" && isUserPageURL(targets[i].URL) {
-				sel = targets[i]
-				break
-			}
-		}
-		if sel == nil && len(targets) > 0 {
-			sel = targets[0]
-		}
 	}
 	if sel == nil {
 		m.log.Error("未找到可附加的浏览器目标")
@@ -118,7 +106,7 @@ func (m *Manager) AttachTarget(target model.TargetID) error {
 	m.conn = conn
 	m.client = cdp.NewClient(conn)
 	m.currentTarget = model.TargetID(sel.ID)
-	m.log.Info("附加浏览器目标成功")
+	m.log.Info("附加浏览器目标成功", "target", string(m.currentTarget))
 	if target == "" {
 		m.startWorkspaceWatcher()
 	} else {
@@ -214,19 +202,18 @@ func (m *Manager) handleStreamError(err error) {
 		return
 	}
 	m.log.Warn("拦截流被中断，尝试自动重连", "error", err)
-	if m.fixedTarget == "" {
-		return
+	var target model.TargetID
+	if m.fixedTarget != "" {
+		target = m.fixedTarget
 	}
-	if err := m.AttachTarget(m.fixedTarget); err != nil {
+	auto := m.fixedTarget == ""
+	if err := m.attachAndEnable(target, auto); err != nil {
 		m.log.Error("重连附加浏览器目标失败", "error", err)
-		return
-	}
-	if err := m.Enable(); err != nil {
-		m.log.Error("重连启用拦截失败", "error", err)
 	}
 }
 
 func (m *Manager) startWorkspaceWatcher() {
+	m.log.Debug("开始工作区轮询", "func", "startWorkspaceWatcher")
 	if m.workspaceStop != nil {
 		return
 	}
@@ -256,6 +243,7 @@ func (m *Manager) workspaceLoop(stop <-chan struct{}) {
 }
 
 func (m *Manager) checkWorkspace() {
+	m.log.Debug("开始工作区轮询", "func", "checkWorkspace")
 	if m.devtoolsURL == "" {
 		return
 	}
@@ -270,51 +258,68 @@ func (m *Manager) checkWorkspace() {
 		m.log.Debug("工作区轮询获取目标列表失败", "error", err)
 		return
 	}
-	var candidate model.TargetID
-	for i := len(targets) - 1; i >= 0; i-- {
-		if targets[i].Type != "page" {
-			continue
-		}
-		if !isUserPageURL(targets[i].URL) {
-			continue
-		}
-		id := model.TargetID(targets[i].ID)
-		if id == "" {
-			continue
-		}
-		if _, ok := m.knownTargets[id]; !ok {
-			candidate = id
-			break
-		}
+	sel := selectAutoTarget(targets)
+	if sel == nil {
+		return
 	}
-	for i := range targets {
-		if targets[i].Type != "page" {
-			continue
-		}
-		id := model.TargetID(targets[i].ID)
-		if id == "" {
-			continue
-		}
-		m.knownTargets[id] = struct{}{}
-	}
+	candidate := model.TargetID(sel.ID)
 	if candidate == "" {
 		return
 	}
 	if m.currentTarget != "" && string(m.currentTarget) == string(candidate) {
 		return
 	}
-	if err := m.attachAndEnable(candidate); err != nil {
+	if err := m.attachAndEnable(candidate, true); err != nil {
 		m.log.Error("自动切换浏览器目标失败", "error", err)
 	}
 }
 
-func (m *Manager) attachAndEnable(target model.TargetID) error {
-	if err := m.AttachTarget(target); err != nil {
+func (m *Manager) attachAndEnable(target model.TargetID, auto bool) error {
+	var err error
+	if auto {
+		err = m.attachAuto(target)
+	} else {
+		err = m.AttachTarget(target)
+	}
+	if err != nil {
 		return err
 	}
 	if err := m.Enable(); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (m *Manager) attachAuto(target model.TargetID) error {
+	m.attachMu.Lock()
+	defer m.attachMu.Unlock()
+	m.log.Info("自动附加浏览器目标", "devtools", m.devtoolsURL, "target", string(target))
+	if m.cancel != nil {
+		m.cancel()
+	}
+	if m.conn != nil {
+		_ = m.conn.Close()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.ctx = ctx
+	m.cancel = cancel
+	sel, err := m.resolveTarget(ctx, target)
+	if err != nil {
+		return err
+	}
+	if sel == nil {
+		m.log.Error("未找到可附加的浏览器目标")
+		return fmt.Errorf("no target")
+	}
+	conn, err := rpcc.DialContext(ctx, sel.WebSocketDebuggerURL)
+	if err != nil {
+		m.log.Error("连接浏览器 DevTools 失败", "error", err)
+		return err
+	}
+	m.conn = conn
+	m.client = cdp.NewClient(conn)
+	m.currentTarget = model.TargetID(sel.ID)
+	m.log.Info("自动附加浏览器目标成功", "target", string(m.currentTarget))
 	return nil
 }
 
@@ -991,6 +996,73 @@ func isUserPageURL(raw string) bool {
 		return true
 	}
 	return false
+}
+
+func (m *Manager) resolveTarget(ctx context.Context, target model.TargetID) (*devtool.Target, error) {
+	dt := devtool.New(m.devtoolsURL)
+	targets, err := dt.List(ctx)
+	if err != nil {
+		m.log.Error("获取浏览器目标列表失败", "error", err)
+		return nil, err
+	}
+	if len(targets) == 0 {
+		return nil, nil
+	}
+	if target != "" {
+		for i := range targets {
+			if string(targets[i].ID) == string(target) {
+				return targets[i], nil
+			}
+		}
+		return nil, nil
+	}
+	return selectAutoTarget(targets), nil
+}
+
+func selectAutoTarget(targets []*devtool.Target) *devtool.Target {
+	var sel *devtool.Target
+	for i := len(targets) - 1; i >= 0; i-- {
+		if targets[i].Type != "page" {
+			continue
+		}
+		if !isUserPageURL(targets[i].URL) {
+			continue
+		}
+		sel = targets[i]
+		break
+	}
+	if sel == nil && len(targets) > 0 {
+		return targets[0]
+	}
+	return sel
+}
+
+func (m *Manager) ListTargets(ctx context.Context) ([]model.TargetInfo, error) {
+	if m.devtoolsURL == "" {
+		return nil, fmt.Errorf("devtools url empty")
+	}
+	dt := devtool.New(m.devtoolsURL)
+	targets, err := dt.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.TargetInfo, 0, len(targets))
+	for i := range targets {
+		if targets[i] == nil {
+			continue
+		}
+		id := model.TargetID(targets[i].ID)
+		info := model.TargetInfo{
+			ID:        id,
+			Type:      string(targets[i].Type),
+			URL:       targets[i].URL,
+			Title:     targets[i].Title,
+			IsCurrent: m.currentTarget != "" && id == m.currentTarget,
+			IsUser:    isUserPageURL(targets[i].URL),
+		}
+		out = append(out, info)
+	}
+	return out, nil
 }
 
 // applyPause 进入人工审批流程并按超时默认动作处理

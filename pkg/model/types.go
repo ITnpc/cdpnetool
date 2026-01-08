@@ -27,3 +27,12 @@ type Event struct {
 	Rule    *RuleID   `json:"rule"`
 	Error   error     `json:"error"`
 }
+
+type TargetInfo struct {
+	ID        TargetID `json:"id"`
+	Type      string   `json:"type"`
+	URL       string   `json:"url"`
+	Title     string   `json:"title"`
+	IsCurrent bool     `json:"isCurrent"`
+	IsUser    bool     `json:"isUser"`
+}

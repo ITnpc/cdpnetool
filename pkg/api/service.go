@@ -12,6 +12,7 @@ type Service interface {
 	StopSession(id model.SessionID) error
 	AttachTarget(id model.SessionID, target model.TargetID) error
 	DetachTarget(id model.SessionID, target model.TargetID) error
+	ListTargets(id model.SessionID) ([]model.TargetInfo, error)
 
 	EnableInterception(id model.SessionID) error
 	DisableInterception(id model.SessionID) error

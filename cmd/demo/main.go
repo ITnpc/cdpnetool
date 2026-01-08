@@ -30,7 +30,7 @@ func main() {
 		devtools = br.DevToolsURL
 	}
 
-	svc := api.NewServiceWithLogger(logger.NewDefaultLogger(logger.LogLevelInfo, os.Stdout))
+	svc := api.NewServiceWithLogger(logger.NewDefaultLogger(logger.LogLevelDebug, os.Stdout))
 	cfg := model.SessionConfig{
 		DevToolsURL:       devtools,
 		Concurrency:       4,

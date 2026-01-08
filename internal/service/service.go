@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"cdpnetool/internal/cdp"
 	logger "cdpnetool/internal/logger"
@@ -111,6 +113,23 @@ func (s *svc) DetachTarget(id model.SessionID, target model.TargetID) error {
 		return ses.mgr.Detach()
 	}
 	return nil
+}
+
+func (s *svc) ListTargets(id model.SessionID) ([]model.TargetInfo, error) {
+	s.mu.Lock()
+	ses, ok := s.sessions[id]
+	s.mu.Unlock()
+	if !ok {
+		return nil, errors.New("cdpnetool: session not found")
+	}
+	if ses.mgr == nil {
+		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, ses.pending, s.log)
+		ses.mgr.SetConcurrency(ses.cfg.Concurrency)
+		ses.mgr.SetRuntime(ses.cfg.BodySizeThreshold, ses.cfg.ProcessTimeoutMS)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return ses.mgr.ListTargets(ctx)
 }
 
 // EnableInterception 启用会话的拦截功能
