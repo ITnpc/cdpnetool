@@ -21,7 +21,7 @@ type Service interface {
 	GetRuleStats(id model.SessionID) (model.EngineStats, error)
 
 	SubscribeEvents(id model.SessionID) (<-chan model.Event, error)
-	SubscribePending(id model.SessionID) (<-chan any, error)
+	SubscribePending(id model.SessionID) (<-chan model.PendingItem, error)
 	ApproveRequest(itemID string, mutations rulespec.Rewrite) error
 	ApproveResponse(itemID string, mutations rulespec.Rewrite) error
 	Reject(itemID string) error

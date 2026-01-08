@@ -310,3 +310,141 @@ type Service interface {
 
 - 提供规则JSON Schema草案，保证配置校验与版本化
 - 完善API与伪实现流程图，开始搭建代码框架
+
+## 重构与优化计划（阶段性方案）
+
+本节用于指导后续对 cdpnetool 的架构重构与代码优化，从宏观到具体步骤都以此为基准。
+
+### 1. 重构目标
+
+- **保持能力**：在不破坏现有对外行为的前提下，保留并强化当前已具备的能力：
+  - 稳定的 CDP 会话管理与两阶段拦截（Request/Response）。
+  - 规则 DSL 与 JSON 配置（`pkg/rulespec` + CONFIG.md）。
+  - Service 接口（`pkg/api.Service`）作为对 GUI/CLI/远程控制的统一门面。
+- **优化架构**：将当前偏“原型化”的内部实现，演化为分层清晰、可扩展的系统：
+  - 拆解 God Object（`internal/cdp/manager.go`）。
+  - 引入协议无关的领域模型（InterceptContext/Domain Session）。
+  - 规范 Pending/Pause 机制、并发与背压策略。
+- **增强可观测性与可维护性**：
+  - 统一日志与事件模型，预留指标与 Trace 扩展点。
+  - 提升可测试性，支持在不依赖真实浏览器的情况下进行单元测试。
+
+### 2. 目标分层结构
+
+#### 2.1 领域层（Domain）
+
+- **职责**：只表达“网络拦截”这一领域本身，不关心 CDP 等具体协议细节。
+- **核心模型（规划）**：
+  - `InterceptContext`：
+    - URL、Method、Headers、Query、Cookies、Body、ContentType、Stage（request/response）、时间戳、TraceID 等。
+  - `RuleEngine` 接口：抽象规则引擎评估能力：
+    - `Eval(ctx InterceptContext) (Result, bool)`。
+    - 当前 `internal/rules.Engine` 通过轻量包装即可实现。
+  - `Result`/`Action`：可重用 `rulespec.Action` 与 `model.RuleID`，也可在后续演进为更抽象动作模型。
+  - `EngineStats`、`Event`、`PendingItem`：承接架构文档中公共 API 设计，用于统计、审计与 GUI 展示。
+
+#### 2.2 CDP 适配层（Adapter）
+
+- **职责**：把 `mafredri/cdp` 和浏览器 DevTools 的细节封装起来，对上暴露领域友好的接口。
+- **核心组件（规划）**：
+  - `BrowserSession/CDPConnection`：
+    - 负责 DevTools 发现、Target 附加/分离、Network/Fetch 启停。
+  - `CDPInterceptor`（重构后的 Manager）：
+    - 订阅 `Fetch.requestPaused` 事件 → 构造 `InterceptContext` → 调用领域层 RuleEngine → 根据结果调用 Continue/Fail/Fulfill/Rewrite 等 CDP 操作。
+  - `BodyMutator`：
+    - 专门处理 JSON Patch / 文本正则 / Base64 等 Body 修改逻辑，减少拦截器本身的复杂度。
+  - `PauseCoordinator`：
+    - 管理 Pause/审批相关的 pending 队列、超时 DefaultAction 和外部 Approve/Reject 调用。
+  - `WorkspaceWatcher/TargetSelector`：
+    - 负责 DevTools 目标轮询与“前台可见页面”选择，为自动跟随当前 Tab 提供支持。
+
+#### 2.3 应用服务层（Service/API）
+
+- **职责**：为上层提供稳定的服务接口，屏蔽内部实现演化。
+- **主要元素**：
+  - `SessionRegistry`：
+    - 管理 Session 生命周期（Start/Stop）、当前规则集与运行配置。
+    - 将领域 Session 与 CDPInterceptor 组合在一起对外暴露。
+  - `pkg/api.Service`：
+    - 保持现有方法签名基本不变，内部通过 SessionRegistry 与领域层协作。
+
+#### 2.4 横切关注点：配置与规则装载
+
+- 集中处理 `SessionConfig` 与 `RuleSet` 的：
+  - JSON 解析与基础 Schema 校验。
+  - 默认值填充（Concurrency、BodySizeThreshold、ProcessTimeoutMS、Pause.TimeoutMS 等）。
+  - 错误提示与版本兼容策略。
+
+#### 2.5 横切关注点：可观测性
+
+- 在现有 `logger.Logger` 基础上：
+  - 规范日志字段（至少包含 TraceID/SessionID/TargetID/RuleID）。
+  - 预留 `Metrics` 接口，用于后续接入 Prometheus 等。
+  - 在拦截事件中贯穿 TraceID，方便日志与事件关联分析。
+
+### 3. 重点改造方向
+
+#### 3.1 Manager 减负与职责拆分
+
+- 拆出以下子组件（可先以内联结构/函数形式存在于 `internal/cdp`，后续再独立成文件或包）：
+  - `ContextBuilder`：从 CDP 事件构造 `InterceptContext`（或当前的 `rules.Ctx`）。
+  - `BodyMutator`：实现 JSON Patch/Text Regex/Base64 三种 Body 修改策略。
+  - `PauseCoordinator`：管理 approvals map、pending 通道以及超时逻辑。
+  - `TargetWatcher`：封装工作区轮询与可见性监听逻辑。
+- Manager/拦截器本身聚焦于：
+  - 消费拦截事件流、调用 RuleEngine、分发到各子组件，并上报 `model.Event` 与统计信息。
+
+#### 3.2 领域模型与 CDP 边界
+
+- 引入抽象的 CDP 客户端接口，例如：
+  - `ContinueRequest/ContinueResponse`、`FailRequest`、`FulfillRequest`、`GetResponseBody`、`RewriteRequest/RewriteResponse` 等。
+- 好处：
+  - 可以通过 mock 接口做单元测试，无需依赖真实浏览器。
+  - 为未来接入其他协议（例如代理模式）预加载同构接口。
+
+#### 3.3 Pending/Pause 系统化
+
+- 明确 `PendingItem` 结构：
+  - ID、Stage、URL、Method、Headers/Cookies 摘要、Body 摘要（例如截断后 + hash）、SessionID、TargetID、触发 RuleID 等。
+- 优化 API：
+  - `SubscribePending` 返回 `<-chan PendingItem` 而非 `<-chan any`。
+  - `ApproveRequest/ApproveResponse/Reject` 与 `PendingItem.ID` 明确绑定，区分请求/响应阶段行为。
+
+#### 3.4 并发与背压策略
+
+- 将当前基于 `sem` 的简单并发控制演进为：
+  - 显式队列：fast-path 队列（不涉及 Pause）、pending 队列（涉及人工审批）。
+  - Worker Pool：由 `SessionConfig.Concurrency` 决定工作协程数。
+- 集中管理降级策略：
+  - 队列溢出、处理超时、Pending 队列满时，统一执行“继续原请求并标记 degraded”。
+
+#### 3.5 配置与规则装载
+
+- 提供统一的配置入口：
+  - 从 JSON 文件/字符串加载 `SessionConfig` 与 `RuleSet`，并进行校验与默认值填充。
+- Demo 与未来 CLI/GUI 均复用该入口，避免分散的配置解析。
+
+### 4. 分阶段实施计划
+
+为减少一次性变更风险，整个重构拆为多个阶段，每个阶段尽量保持外部行为不变，仅优化内部结构。
+
+1. **阶段 1：逻辑搬家与 Manager 减负**
+   - 抽取构建决策上下文、Body 修改、Pause 审批等逻辑为独立函数/结构，减小 `manager.go` 复杂度。
+   - 为 JSON Patch、条件匹配等纯逻辑增加单元测试。
+2. **阶段 2：CDP 适配接口抽象**
+   - 定义 CDP 抽象接口，并将现有 `cdp.Client` 封装为实现。
+   - Manager/拦截器改为依赖接口，准备好未来测试与多实现切换。
+3. **阶段 3：领域层与服务层梳理**
+   - 将 `EngineStats`、`Event`、`PendingItem` 等统一放入领域层定义。
+   - `internal/service` 聚焦 SessionRegistry 与 API 实现，弱化对 CDP 细节的感知。
+4. **阶段 4：Pending/Pause 完善**
+   - 落地 `PendingItem` 结构与序列化格式，强化 `SubscribePending`/`Approve`/`Reject` 的语义。
+   - 为 Pending 流程增加事件与日志（pending/approved/rejected/timeout）。
+5. **阶段 5：并发与背压重构（可与其他阶段交叉推进）**
+   - 引入队列 + Worker Pool，集中管理超时和降级策略。
+   - 配合 metrics 记录队列长度、处理延迟与降级次数。
+6. **阶段 6：配置与可观测性增强**
+   - 统一配置加载与校验逻辑，并更新 demo 使用配置驱动。
+   - 定义基础 Metrics 接口，在关键路径打点和埋指标。
+
+上述计划将作为后续所有重构工作的“路线图”，实际执行中如有设计调整，应在此文档中更新对应小节并说明原因。

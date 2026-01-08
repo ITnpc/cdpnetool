@@ -25,7 +25,7 @@ type session struct {
 	cfg     model.SessionConfig
 	rules   rulespec.RuleSet
 	events  chan model.Event
-	pending chan any
+	pending chan model.PendingItem
 	mgr     *cdp.Manager
 }
 
@@ -48,7 +48,7 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 		id:      id,
 		cfg:     cfg,
 		events:  make(chan model.Event, 128),
-		pending: make(chan any, cfg.PendingCapacity),
+		pending: make(chan model.PendingItem, cfg.PendingCapacity),
 	}
 	ses.mgr = cdp.New(cfg.DevToolsURL, ses.events, ses.pending, s.log)
 	ses.mgr.SetConcurrency(cfg.Concurrency)
@@ -214,7 +214,7 @@ func (s *svc) SubscribeEvents(id model.SessionID) (<-chan model.Event, error) {
 }
 
 // SubscribePending 订阅会话的待审批队列
-func (s *svc) SubscribePending(id model.SessionID) (<-chan any, error) {
+func (s *svc) SubscribePending(id model.SessionID) (<-chan model.PendingItem, error) {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()

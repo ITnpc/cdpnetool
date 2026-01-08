@@ -28,6 +28,15 @@ type Event struct {
 	Error   error     `json:"error"`
 }
 
+type PendingItem struct {
+	ID     string   `json:"id"`
+	Stage  string   `json:"stage"`
+	URL    string   `json:"url"`
+	Method string   `json:"method"`
+	Target TargetID `json:"target"`
+	Rule   *RuleID  `json:"rule"`
+}
+
 type TargetInfo struct {
 	ID        TargetID `json:"id"`
 	Type      string   `json:"type"`
