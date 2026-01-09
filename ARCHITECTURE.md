@@ -480,6 +480,63 @@ type Service interface {
     - `rules.load`：装载 RuleSet，对应 `LoadRules`。
     - `stats.rules`：查询规则命中统计，对应 `GetRuleStats`。
 - **后续扩展方向**：
-  - 增加 `session.list` 等方法，支持多会话管理与状态查看。
   - 增加 Pending 审批相关方法（例如 `pending.list`、`pending.approve`、`pending.reject`）。
   - 确定事件通道方案（SSE 或 WebSocket），并与上述 `method` 命名保持一致的事件类型。
+
+## GUI 客户端（Fyne）阶段规划
+
+- **目标形态**：提供一个桌面控制台，用于本地管理拦截会话、浏览器页面目标、规则集与拦截事件/Pause 审批。
+- **界面总体布局**：
+  - 主窗口采用左右分栏 + 上部工具条：
+    - 顶部工具条：全局操作（新建会话、启用/停用拦截、附加默认页面等）。
+    - 左侧侧边栏：会话列表与会话级配置，展示当前所有 Session 及其状态。
+    - 右侧主区域：按 Tab 分为 Targets/Rules/Events/Pending 四个功能视图。
+
+### 1. 布局设计
+
+- 左侧 Session 面板：
+  - 顶部：DevToolsURL 输入框 + "新建会话" 按钮；必要时支持并发数等高级配置。
+  - 列表：显示 SessionID（缩略）、DevToolsURL、启用状态等，支持选择当前活跃会话。
+  - 选中会话后，右侧各 Tab 的数据与操作均作用于该会话。
+- 右侧主视图 Tabs：
+  - Targets：管理浏览器 page 目标（列表展示 Title/URL/类型/是否已附加，提供附加/移除操作）。
+  - Rules：展示当前规则集概要（ID/Name/Priority/Mode），支持从 JSON 文件加载规则并应用到会话。
+  - Events：实时展示拦截事件流（类型、TargetID、RuleID、简要描述），用于观察规则命中与降级情况。
+  - Pending（后续阶段）：展示 Pause 审批队列，支持在 GUI 中编辑 Rewrite 并审批或拒绝。
+
+### 2. 功能阶段划分
+
+1. **阶段 1：最小可用 GUI（Session + Targets）**
+   - 实现基础布局骨架：顶部工具条、左侧 Session 面板、右侧 Tabs，其中只启用 Targets Tab。
+   - 支持：
+     - 新建会话：输入 DevToolsURL，创建 Session（默认并发与阈值）。
+     - 选择当前会话：在 Session 列表中切换活跃会话。
+     - 列出目标：调用 `target.list` 或直接使用 `api.Service.ListTargets`，在 Targets Tab 中展示所有 page。
+     - 附加/移除目标：基于列表中的选中项调用 `target.attach` / `target.detach`。
+   - 目标：在 GUI 中完成“启动会话 → 选择页面 → 开始监听该页面”的最小闭环。
+
+2. **阶段 2：拦截控制与规则管理（Session + Rules）**
+   - 工具条增加启用/停用拦截按钮，调用 `session.enable` / `session.disable`。
+   - Rules Tab：
+     - 支持从文件选择器加载 RuleSet JSON，调用 `rules.load` 应用于当前 Session。
+     - 展示规则摘要列表（ID/Name/Priority/Mode），可查看规则数量与简单统计信息。
+   - 目标：让用户在 GUI 内完成“配置规则 → 启用拦截 → 观测规则行为”的配置闭环。
+
+3. **阶段 3：事件视图（Events）**
+   - Events Tab：
+     - 与后端事件通道（本地 channel 或 HTTP SSE/WebSocket）对接，实时追加拦截事件。
+     - 支持按 Session/Target/RuleType 简单过滤或高亮关键事件（例如 degraded/failed）。
+   - 可选：提供基础的统计摘要（例如最近 N 条事件中各类型占比）。
+   - 目标：提供“观察与调试”视角，方便用户理解规则效果和降级行为。
+
+4. **阶段 4：Pause 审批与高级交互（Pending）**
+   - Pending Tab：
+     - 展示 Pause 产生的待审批项（PendingID/Stage/URL/Method/RuleID 等）。
+     - 支持在 GUI 中构造 Rewrite（URL/头/Body JSON Patch 等），调用后端审批接口。
+     - 支持快速拒绝或应用默认动作，并展示审批历史记录。
+   - 目标：在 GUI 中完整覆盖架构文档中“手动阻塞修改机制”的核心交互流程。
+
+5. **阶段 5：体验优化与扩展**
+   - 引入更多状态展示与诊断信息，例如：规则命中统计图、并发队列长度与降级次数等。
+   - 优化布局与交互细节（快捷键、右键菜单、多窗口支持等），根据实际使用反馈迭代。
+   - 预留与远程 HTTP API 协同的模式，使 GUI 可选地作为远程控制台使用。
