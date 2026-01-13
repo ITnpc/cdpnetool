@@ -20,13 +20,23 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 	defer cancel()
 	start := time.Now()
 
-	// 事件：拦截开始
-	m.events <- model.Event{Type: "intercepted", Target: ts.id}
-
 	stage := "request"
+	statusCode := 0
 	if ev.ResponseStatusCode != nil {
 		stage = "response"
+		statusCode = *ev.ResponseStatusCode
 	}
+
+	// 事件：拦截开始
+	m.sendEvent(model.Event{
+		Type:       "intercepted",
+		Target:     ts.id,
+		URL:        ev.Request.URL,
+		Method:     ev.Request.Method,
+		Stage:      stage,
+		StatusCode: statusCode,
+	})
+
 	m.log.Debug("开始处理拦截事件", "stage", stage, "url", ev.Request.URL, "method", ev.Request.Method)
 
 	res := m.decide(ts, ev, stage)
@@ -41,7 +51,7 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 	if a.DropRate > 0 {
 		if rand.Float64() < a.DropRate {
 			m.applyContinue(ctx, ts, ev, stage)
-			m.events <- model.Event{Type: "degraded", Target: ts.id}
+			m.sendEvent(model.Event{Type: "degraded", Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method, Stage: stage})
 			m.log.Warn("触发丢弃概率降级", "stage", stage)
 			return
 		}
@@ -55,7 +65,7 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 	elapsed := time.Since(start)
 	if elapsed > time.Duration(to)*time.Millisecond {
 		m.applyContinue(ctx, ts, ev, stage)
-		m.events <- model.Event{Type: "degraded", Target: ts.id}
+		m.sendEvent(model.Event{Type: "degraded", Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method, Stage: stage})
 		m.log.Warn("拦截处理超时自动降级", "stage", stage, "elapsed", elapsed, "timeout", to)
 		return
 	}
@@ -71,7 +81,7 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 	if a.Fail != nil {
 		m.log.Info("应用失败动作", "stage", stage)
 		m.applyFail(ctx, ts, ev, a.Fail)
-		m.events <- model.Event{Type: "failed", Rule: res.RuleID, Target: ts.id}
+		m.sendEvent(model.Event{Type: "failed", Rule: res.RuleID, Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method, Stage: stage})
 		m.log.Debug("拦截事件处理完成", "stage", stage, "duration", time.Since(start))
 		return
 	}
@@ -80,7 +90,7 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 	if a.Respond != nil {
 		m.log.Info("应用自定义响应动作", "stage", stage)
 		m.applyRespond(ctx, ts, ev, a.Respond, stage)
-		m.events <- model.Event{Type: "fulfilled", Rule: res.RuleID, Target: ts.id}
+		m.sendEvent(model.Event{Type: "fulfilled", Rule: res.RuleID, Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method, Stage: stage, StatusCode: a.Respond.Status})
 		m.log.Debug("拦截事件处理完成", "stage", stage, "duration", time.Since(start))
 		return
 	}
@@ -89,7 +99,7 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 	if a.Rewrite != nil {
 		m.log.Info("应用请求响应重写动作", "stage", stage)
 		m.applyRewrite(ctx, ts, ev, a.Rewrite, stage)
-		m.events <- model.Event{Type: "mutated", Rule: res.RuleID, Target: ts.id}
+		m.sendEvent(model.Event{Type: "mutated", Rule: res.RuleID, Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method, Stage: stage, StatusCode: statusCode})
 		m.log.Debug("拦截事件处理完成", "stage", stage, "duration", time.Since(start))
 		return
 	}
@@ -164,5 +174,14 @@ func (m *Manager) degradeAndContinue(ts *targetSession, ev *fetch.RequestPausedR
 	if err := ts.client.Fetch.ContinueRequest(ctx, args); err != nil {
 		m.log.Error("降级放行请求失败", "target", string(ts.id), "error", err)
 	}
-	m.events <- model.Event{Type: "degraded", Target: ts.id}
+	m.sendEvent(model.Event{Type: "degraded", Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method})
+}
+
+// sendEvent 安全发送事件到通道，自动添加时间戳
+func (m *Manager) sendEvent(evt model.Event) {
+	evt.Timestamp = time.Now().UnixMilli()
+	select {
+	case m.events <- evt:
+	default:
+	}
 }

@@ -19,14 +19,14 @@ func (m *Manager) applyPause(ctx context.Context, ts *targetSession, ev *fetch.R
 		return
 	}
 
-	mut := m.waitForApproval(ch, p.TimeoutMS)
-	m.applyApprovalResult(ctx, ts, ev, mut, p, stage)
+	mut, timeout := m.waitForApproval(ch, p.TimeoutMS)
+	m.applyApprovalResult(ctx, ts, ev, mut, timeout, p, stage)
 	m.unregisterApproval(id)
 }
 
 // registerApproval 注册审批通道
-func (m *Manager) registerApproval(id string) chan rulespec.Rewrite {
-	ch := make(chan rulespec.Rewrite, 1)
+func (m *Manager) registerApproval(id string) chan *rulespec.Rewrite {
+	ch := make(chan *rulespec.Rewrite, 1)
 	m.approvalsMu.Lock()
 	m.approvals[id] = ch
 	m.approvalsMu.Unlock()
@@ -40,19 +40,19 @@ func (m *Manager) unregisterApproval(id string) {
 	m.approvalsMu.Unlock()
 }
 
-// waitForApproval 等待审批结果或超时，返回变更内容（nil 表示超时）
-func (m *Manager) waitForApproval(ch chan rulespec.Rewrite, timeoutMS int) *rulespec.Rewrite {
+// waitForApproval 等待审批结果或超时
+// 返回值: *Rewrite 表示通过（可能有修改），nil+false 表示拒绝，nil+true 表示超时
+func (m *Manager) waitForApproval(ch chan *rulespec.Rewrite, timeoutMS int) (mut *rulespec.Rewrite, timeout bool) {
 	if timeoutMS <= 0 {
-		// 默认 3000ms
 		timeoutMS = 3000
 	}
 	t := time.NewTimer(time.Duration(timeoutMS) * time.Millisecond)
 	defer t.Stop()
 	select {
 	case mut := <-ch:
-		return &mut
+		return mut, false // mut==nil 表示拒绝
 	case <-t.C:
-		return nil
+		return nil, true // 超时
 	}
 }
 
@@ -86,15 +86,23 @@ func (m *Manager) handlePauseOverflow(id string, ts *targetSession, ev *fetch.Re
 }
 
 // applyApprovalResult 应用审批结果或超时默认动作
-func (m *Manager) applyApprovalResult(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, mut *rulespec.Rewrite, p *rulespec.Pause, stage string) {
-	if mut != nil {
-		if hasEffectiveMutations(*mut) {
-			m.applyRewrite(ctx, ts, ev, mut, stage)
-		} else {
-			m.applyContinue(ctx, ts, ev, stage)
-		}
-	} else {
+func (m *Manager) applyApprovalResult(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, mut *rulespec.Rewrite, timeout bool, p *rulespec.Pause, stage string) {
+	if timeout {
+		// 超时，执行默认动作
 		m.applyPauseDefaultAction(ctx, ts, ev, p, stage)
+		return
+	}
+	if mut == nil {
+		// 拒绝，使请求失败
+		m.applyFail(ctx, ts, ev, &rulespec.Fail{Reason: "Aborted"})
+		m.sendEvent(model.Event{Type: "rejected", Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method, Stage: stage})
+		return
+	}
+	// 通过，应用修改
+	if hasEffectiveMutations(*mut) {
+		m.applyRewrite(ctx, ts, ev, mut, stage)
+	} else {
+		m.applyContinue(ctx, ts, ev, stage)
 	}
 }
 

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { InterceptEvent } from '@/types/events'
 
 // 类型定义
 export interface TargetInfo {
@@ -14,14 +15,6 @@ export interface EngineStats {
   total: number
   matched: number
   byRule: Record<string, number>
-}
-
-export interface InterceptEvent {
-  type: string
-  session: string
-  target: string
-  rule?: string
-  error?: string
 }
 
 // Session 状态

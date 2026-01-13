@@ -50,7 +50,7 @@ type Manager struct {
 
 	// Pause 审批通道
 	approvalsMu sync.Mutex
-	approvals   map[string]chan rulespec.Rewrite
+	approvals   map[string]chan *rulespec.Rewrite
 
 	// 已附加的 targets
 	targetsMu sync.Mutex
@@ -82,7 +82,7 @@ func New(devtoolsURL string, events chan model.Event, pending chan model.Pending
 		log:         l,
 		events:      events,
 		pending:     pending,
-		approvals:   make(map[string]chan rulespec.Rewrite),
+		approvals:   make(map[string]chan *rulespec.Rewrite),
 		targets:     make(map[model.TargetID]*targetSession),
 	}
 }
@@ -465,7 +465,20 @@ func (m *Manager) Approve(itemID string, mutations rulespec.Rewrite) {
 	m.approvalsMu.Unlock()
 	if ok {
 		select {
-		case ch <- mutations:
+		case ch <- &mutations:
+		default:
+		}
+	}
+}
+
+// Reject 拒绝审批项，使请求失败
+func (m *Manager) Reject(itemID string) {
+	m.approvalsMu.Lock()
+	ch, ok := m.approvals[itemID]
+	m.approvalsMu.Unlock()
+	if ok {
+		select {
+		case ch <- nil: // nil 表示拒绝
 		default:
 		}
 	}

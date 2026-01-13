@@ -21,11 +21,16 @@ type EngineStats struct {
 }
 
 type Event struct {
-	Type    string    `json:"type"`
-	Session SessionID `json:"session"`
-	Target  TargetID  `json:"target"`
-	Rule    *RuleID   `json:"rule"`
-	Error   error     `json:"error"`
+	Type       string    `json:"type"`
+	Session    SessionID `json:"session"`
+	Target     TargetID  `json:"target"`
+	Rule       *RuleID   `json:"rule,omitempty"`
+	URL        string    `json:"url,omitempty"`
+	Method     string    `json:"method,omitempty"`
+	Stage      string    `json:"stage,omitempty"`
+	StatusCode int       `json:"statusCode,omitempty"`
+	Error      string    `json:"error,omitempty"`
+	Timestamp  int64     `json:"timestamp"`
 }
 
 type PendingItem struct {

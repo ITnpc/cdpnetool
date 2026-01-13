@@ -120,6 +120,7 @@ export interface Action {
 
 export interface Rule {
   id: RuleID
+  name?: string  // 可选规则名称
   priority: number
   mode: RuleMode
   match: Match
@@ -155,6 +156,8 @@ export function createEmptyCondition(type: ConditionType = 'url'): Condition {
       return { type: 'probability', value: '1.0' }
     case 'stage':
       return { type: 'stage', value: 'request' }
+    case 'time_window':
+      return { type: 'time_window', value: '09:00-18:00' }
     default:
       return { type: 'url', mode: 'prefix', pattern: '' }
   }

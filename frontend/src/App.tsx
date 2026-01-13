@@ -172,12 +172,11 @@ function App() {
     // @ts-ignore
     if (window.runtime?.EventsOn) {
       // @ts-ignore
-      window.runtime.EventsOn('intercept-event', (event: any) => {
-        // 添加 id 和 timestamp
+      window.runtime.EventsOn('intercept-event', (event: InterceptEvent) => {
+        // 后端已提供完整事件数据，生成 id 用于前端 key
         const enrichedEvent: InterceptEvent = {
           ...event,
-          id: event.id || Math.random().toString(36).slice(2),
-          timestamp: event.timestamp || Date.now(),
+          id: event.id || `${event.timestamp}_${Math.random().toString(36).slice(2)}`,
         }
         addEvent(enrichedEvent)
       })

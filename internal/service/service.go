@@ -43,6 +43,21 @@ func NewWithLogger(l logger.Logger) *svc {
 func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// 应用默认值
+	if cfg.Concurrency <= 0 {
+		cfg.Concurrency = 8
+	}
+	if cfg.BodySizeThreshold <= 0 {
+		cfg.BodySizeThreshold = 1 << 20 // 1MB
+	}
+	if cfg.ProcessTimeoutMS <= 0 {
+		cfg.ProcessTimeoutMS = 3000
+	}
+	if cfg.PendingCapacity <= 0 {
+		cfg.PendingCapacity = 64
+	}
+
 	id := model.SessionID(uuid.New().String())
 	ses := &session{
 		id:      id,
@@ -248,7 +263,14 @@ func (s *svc) ApproveResponse(itemID string, mutations rulespec.Rewrite) error {
 	return nil
 }
 
-// Reject 拒绝审批项（占位实现）
+// Reject 拒绝审批项
 func (s *svc) Reject(itemID string) error {
+	s.mu.Lock()
+	for _, ses := range s.sessions {
+		if ses.mgr != nil {
+			ses.mgr.Reject(itemID)
+		}
+	}
+	s.mu.Unlock()
 	return nil
 }
