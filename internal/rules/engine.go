@@ -183,38 +183,38 @@ func evalCondition(ctx *EvalContext, c *rulespec.Condition) bool {
 		v, ok := getHeaderCaseInsensitive(ctx.Headers, c.Name)
 		return ok && matchRegex(v, c.Pattern)
 
-	// Query 条件
+	// Query 条件（key 统一小写匹配）
 	case rulespec.ConditionQueryExists:
-		_, ok := ctx.Query[c.Name]
+		_, ok := ctx.Query[strings.ToLower(c.Name)]
 		return ok
 	case rulespec.ConditionQueryNotExists:
-		_, ok := ctx.Query[c.Name]
+		_, ok := ctx.Query[strings.ToLower(c.Name)]
 		return !ok
 	case rulespec.ConditionQueryEquals:
-		v, ok := ctx.Query[c.Name]
+		v, ok := ctx.Query[strings.ToLower(c.Name)]
 		return ok && v == c.Value
 	case rulespec.ConditionQueryContains:
-		v, ok := ctx.Query[c.Name]
+		v, ok := ctx.Query[strings.ToLower(c.Name)]
 		return ok && strings.Contains(v, c.Value)
 	case rulespec.ConditionQueryRegex:
-		v, ok := ctx.Query[c.Name]
+		v, ok := ctx.Query[strings.ToLower(c.Name)]
 		return ok && matchRegex(v, c.Pattern)
 
-	// Cookie 条件
+	// Cookie 条件（name 统一小写匹配）
 	case rulespec.ConditionCookieExists:
-		_, ok := ctx.Cookies[c.Name]
+		_, ok := ctx.Cookies[strings.ToLower(c.Name)]
 		return ok
 	case rulespec.ConditionCookieNotExists:
-		_, ok := ctx.Cookies[c.Name]
+		_, ok := ctx.Cookies[strings.ToLower(c.Name)]
 		return !ok
 	case rulespec.ConditionCookieEquals:
-		v, ok := ctx.Cookies[c.Name]
+		v, ok := ctx.Cookies[strings.ToLower(c.Name)]
 		return ok && v == c.Value
 	case rulespec.ConditionCookieContains:
-		v, ok := ctx.Cookies[c.Name]
+		v, ok := ctx.Cookies[strings.ToLower(c.Name)]
 		return ok && strings.Contains(v, c.Value)
 	case rulespec.ConditionCookieRegex:
-		v, ok := ctx.Cookies[c.Name]
+		v, ok := ctx.Cookies[strings.ToLower(c.Name)]
 		return ok && matchRegex(v, c.Pattern)
 
 	// Body 条件

@@ -1,221 +1,407 @@
-// 规则相关类型定义，与后端 pkg/rulespec 保持一致
+// 规则配置类型定义 (v2)
+// 与后端 pkg/rulespec/types.go 保持一致
 
-// ========== 基础类型 ==========
+// ==================== 基础类型 ====================
 
 export type RuleID = string
 
-export type ConditionType = 
-  | 'url' 
-  | 'method' 
-  | 'header' 
-  | 'query' 
-  | 'cookie' 
-  | 'json_pointer' 
-  | 'text' 
-  | 'mime' 
-  | 'size' 
-  | 'probability'
-  | 'stage'
-  | 'time_window'
+// 生命周期阶段
+export type Stage = 'request' | 'response'
 
-export type ConditionMode = 'prefix' | 'regex' | 'exact'
+// ==================== 条件类型 ====================
 
-export type ConditionOp = 'equals' | 'contains' | 'regex' | 'lt' | 'lte' | 'gt' | 'gte' | 'between'
+// V2 细粒度条件类型（25种）
+export type ConditionType =
+  // URL 条件
+  | 'urlEquals'
+  | 'urlPrefix'
+  | 'urlSuffix'
+  | 'urlContains'
+  | 'urlRegex'
+  // Method 和 ResourceType
+  | 'method'
+  | 'resourceType'
+  // Header 条件
+  | 'headerExists'
+  | 'headerNotExists'
+  | 'headerEquals'
+  | 'headerContains'
+  | 'headerRegex'
+  // Query 条件
+  | 'queryExists'
+  | 'queryNotExists'
+  | 'queryEquals'
+  | 'queryContains'
+  | 'queryRegex'
+  // Cookie 条件
+  | 'cookieExists'
+  | 'cookieNotExists'
+  | 'cookieEquals'
+  | 'cookieContains'
+  | 'cookieRegex'
+  // Body 条件
+  | 'bodyContains'
+  | 'bodyRegex'
+  | 'bodyJsonPath'
 
-export type RuleMode = 'short_circuit' | 'aggregate'
-
-export type PauseStage = 'request' | 'response'
-
-export type PauseDefaultActionType = 'continue_original' | 'continue_mutated' | 'fulfill' | 'fail'
-
-export type JSONPatchOpType = 'add' | 'remove' | 'replace' | 'move' | 'copy' | 'test'
-
-// ========== Condition 条件 ==========
-
+// 条件定义
 export interface Condition {
   type: ConditionType
-  mode?: ConditionMode      // url, mime
-  pattern?: string          // url, mime
-  values?: string[]         // method
-  key?: string              // header, query, cookie
-  op?: ConditionOp          // header, query, cookie, text, json_pointer, size
-  value?: string            // header, query, cookie, text, json_pointer, size, probability, stage
-  pointer?: string          // json_pointer
+  value?: string         // urlEquals, urlPrefix, urlSuffix, urlContains, *Equals, *Contains, bodyContains
+  values?: string[]      // method, resourceType
+  pattern?: string       // urlRegex, *Regex
+  name?: string          // header*, query*, cookie*
+  path?: string          // bodyJsonPath
 }
 
-// ========== Match 匹配器 ==========
+// ==================== 匹配结构 ====================
 
 export interface Match {
-  allOf?: Condition[]
-  anyOf?: Condition[]
-  noneOf?: Condition[]
+  allOf?: Condition[]    // AND 逻辑
+  anyOf?: Condition[]    // OR 逻辑
 }
 
-// ========== Action 动作 ==========
+// ==================== 行为类型 ====================
 
+// V2 细粒度行为类型（15种）
+export type ActionType =
+  // 请求阶段专用
+  | 'setUrl'
+  | 'setMethod'
+  | 'setQueryParam'
+  | 'removeQueryParam'
+  | 'setCookie'
+  | 'removeCookie'
+  | 'setFormField'
+  | 'removeFormField'
+  | 'block'
+  // 响应阶段专用
+  | 'setStatus'
+  // 通用
+  | 'setHeader'
+  | 'removeHeader'
+  | 'setBody'
+  | 'replaceBodyText'
+  | 'patchBodyJson'
+
+// Body 编码方式
+export type BodyEncoding = 'text' | 'base64'
+
+// JSON Patch 操作
 export interface JSONPatchOp {
-  op: JSONPatchOpType
+  op: 'add' | 'remove' | 'replace' | 'move' | 'copy' | 'test'
   path: string
-  from?: string
   value?: any
+  from?: string
 }
 
-export interface TextRegexPatch {
-  pattern: string
-  replace: string
-}
-
-export interface Base64Patch {
-  value: string
-}
-
-export interface BodyPatch {
-  jsonPatch?: JSONPatchOp[]
-  textRegex?: TextRegexPatch
-  base64?: Base64Patch
-}
-
-export interface Rewrite {
-  url?: string
-  method?: string
-  headers?: Record<string, string | null>
-  query?: Record<string, string | null>
-  cookies?: Record<string, string | null>
-  body?: BodyPatch
-}
-
-export interface Respond {
-  status: number
-  headers?: Record<string, string>
-  body?: string
-  base64?: boolean
-}
-
-export interface Fail {
-  reason: string
-}
-
-export interface PauseDefaultAction {
-  type: PauseDefaultActionType
-  status?: number
-  reason?: string
-}
-
-export interface Pause {
-  stage: PauseStage
-  timeoutMS: number
-  defaultAction: PauseDefaultAction
-}
-
+// 行为定义
 export interface Action {
-  rewrite?: Rewrite
-  respond?: Respond
-  fail?: Fail
-  delayMS?: number
-  dropRate?: number
-  pause?: Pause
+  type: ActionType
+  value?: string | number       // setUrl, setMethod, setStatus, setBody, setHeader, setQueryParam, setCookie, setFormField
+  name?: string                 // setHeader, removeHeader, setQueryParam, removeQueryParam, setCookie, removeCookie, setFormField, removeFormField
+  encoding?: BodyEncoding       // setBody
+  search?: string               // replaceBodyText
+  replace?: string              // replaceBodyText
+  replaceAll?: boolean          // replaceBodyText
+  patches?: JSONPatchOp[]       // patchBodyJson
+  statusCode?: number           // block
+  headers?: Record<string, string>  // block
+  body?: string                 // block
+  bodyEncoding?: BodyEncoding   // block
 }
 
-// ========== Rule 规则 ==========
+// ==================== 规则结构 ====================
 
 export interface Rule {
   id: RuleID
-  name?: string  // 可选规则名称
+  name: string
+  enabled: boolean
   priority: number
-  mode: RuleMode
+  stage: Stage
   match: Match
-  action: Action
+  actions: Action[]
 }
 
+// ==================== 配置结构 ====================
+
+// 简化的规则集结构（用于前端编辑器）
 export interface RuleSet {
   version: string
   rules: Rule[]
 }
 
-// ========== 辅助函数 ==========
+// 完整的配置结构
+export interface Config {
+  id: string
+  name: string
+  version: string
+  description?: string
+  settings?: Record<string, any>
+  rules: Rule[]
+}
 
-export function createEmptyCondition(type: ConditionType = 'url'): Condition {
+// ==================== 资源类型常量 ====================
+
+export const RESOURCE_TYPES = [
+  'document',
+  'script',
+  'stylesheet',
+  'image',
+  'media',
+  'font',
+  'xhr',
+  'fetch',
+  'websocket',
+  'other'
+] as const
+
+export type ResourceType = typeof RESOURCE_TYPES[number]
+
+// HTTP 方法常量
+export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'] as const
+
+// ==================== 条件类型分组 ====================
+
+export const CONDITION_GROUPS = {
+  url: ['urlEquals', 'urlPrefix', 'urlSuffix', 'urlContains', 'urlRegex'],
+  method: ['method'],
+  resourceType: ['resourceType'],
+  header: ['headerExists', 'headerNotExists', 'headerEquals', 'headerContains', 'headerRegex'],
+  query: ['queryExists', 'queryNotExists', 'queryEquals', 'queryContains', 'queryRegex'],
+  cookie: ['cookieExists', 'cookieNotExists', 'cookieEquals', 'cookieContains', 'cookieRegex'],
+  body: ['bodyContains', 'bodyRegex', 'bodyJsonPath']
+} as const
+
+// 条件类型标签
+export const CONDITION_TYPE_LABELS: Record<ConditionType, string> = {
+  urlEquals: 'URL 精确匹配',
+  urlPrefix: 'URL 前缀匹配',
+  urlSuffix: 'URL 后缀匹配',
+  urlContains: 'URL 包含',
+  urlRegex: 'URL 正则匹配',
+  method: 'HTTP 方法',
+  resourceType: '资源类型',
+  headerExists: 'Header 存在',
+  headerNotExists: 'Header 不存在',
+  headerEquals: 'Header 精确匹配',
+  headerContains: 'Header 包含',
+  headerRegex: 'Header 正则匹配',
+  queryExists: 'Query 参数存在',
+  queryNotExists: 'Query 参数不存在',
+  queryEquals: 'Query 参数精确匹配',
+  queryContains: 'Query 参数包含',
+  queryRegex: 'Query 参数正则匹配',
+  cookieExists: 'Cookie 存在',
+  cookieNotExists: 'Cookie 不存在',
+  cookieEquals: 'Cookie 精确匹配',
+  cookieContains: 'Cookie 包含',
+  cookieRegex: 'Cookie 正则匹配',
+  bodyContains: 'Body 包含',
+  bodyRegex: 'Body 正则匹配',
+  bodyJsonPath: 'JSON Path 匹配'
+}
+
+// 条件类型简短标签（用于选择器）
+export const CONDITION_TYPE_SHORT_LABELS: Record<ConditionType, string> = {
+  urlEquals: 'URL =',
+  urlPrefix: 'URL 前缀',
+  urlSuffix: 'URL 后缀',
+  urlContains: 'URL 含',
+  urlRegex: 'URL 正则',
+  method: '方法',
+  resourceType: '资源类型',
+  headerExists: 'Header 存在',
+  headerNotExists: 'Header 不存在',
+  headerEquals: 'Header =',
+  headerContains: 'Header 含',
+  headerRegex: 'Header 正则',
+  queryExists: 'Query 存在',
+  queryNotExists: 'Query 不存在',
+  queryEquals: 'Query =',
+  queryContains: 'Query 含',
+  queryRegex: 'Query 正则',
+  cookieExists: 'Cookie 存在',
+  cookieNotExists: 'Cookie 不存在',
+  cookieEquals: 'Cookie =',
+  cookieContains: 'Cookie 含',
+  cookieRegex: 'Cookie 正则',
+  bodyContains: 'Body 含',
+  bodyRegex: 'Body 正则',
+  bodyJsonPath: 'JSON Path'
+}
+
+// ==================== 行为类型分组 ====================
+
+// 请求阶段可用行为
+export const REQUEST_ACTIONS: ActionType[] = [
+  'setUrl', 'setMethod', 'setHeader', 'removeHeader',
+  'setQueryParam', 'removeQueryParam', 'setCookie', 'removeCookie',
+  'setBody', 'replaceBodyText', 'patchBodyJson',
+  'setFormField', 'removeFormField', 'block'
+]
+
+// 响应阶段可用行为
+export const RESPONSE_ACTIONS: ActionType[] = [
+  'setStatus', 'setHeader', 'removeHeader',
+  'setBody', 'replaceBodyText', 'patchBodyJson'
+]
+
+// 行为类型标签
+export const ACTION_TYPE_LABELS: Record<ActionType, string> = {
+  setUrl: '设置 URL',
+  setMethod: '设置 Method',
+  setHeader: '设置 Header',
+  removeHeader: '移除 Header',
+  setQueryParam: '设置 Query 参数',
+  removeQueryParam: '移除 Query 参数',
+  setCookie: '设置 Cookie',
+  removeCookie: '移除 Cookie',
+  setBody: '替换 Body',
+  replaceBodyText: '文本替换 Body',
+  patchBodyJson: 'JSON Patch',
+  setFormField: '设置表单字段',
+  removeFormField: '移除表单字段',
+  setStatus: '设置状态码',
+  block: '拦截请求'
+}
+
+// 终结性行为
+export const TERMINAL_ACTIONS: ActionType[] = ['block']
+
+// ==================== 辅助函数 ====================
+
+// 创建空条件
+export function createEmptyCondition(type: ConditionType = 'urlPrefix'): Condition {
+  const base: Condition = { type }
+
+  // 根据类型设置默认字段
+  if (type === 'method') {
+    return { ...base, values: ['GET'] }
+  }
+  if (type === 'resourceType') {
+    return { ...base, values: ['xhr', 'fetch'] }
+  }
+  if (type.endsWith('Regex')) {
+    return { ...base, pattern: '' }
+  }
+  if (type.startsWith('header') || type.startsWith('query') || type.startsWith('cookie')) {
+    if (type.endsWith('Exists') || type.endsWith('NotExists')) {
+      return { ...base, name: '' }
+    }
+    if (type.endsWith('Regex')) {
+      return { ...base, name: '', pattern: '' }
+    }
+    return { ...base, name: '', value: '' }
+  }
+  if (type === 'bodyJsonPath') {
+    return { ...base, path: '', value: '' }
+  }
+
+  return { ...base, value: '' }
+}
+
+// 创建空行为
+export function createEmptyAction(type: ActionType = 'setHeader', _stage: Stage = 'request'): Action {
   switch (type) {
-    case 'url':
-      return { type: 'url', mode: 'prefix', pattern: '' }
-    case 'method':
-      return { type: 'method', values: ['GET'] }
-    case 'header':
-    case 'query':
-    case 'cookie':
-      return { type, key: '', op: 'equals', value: '' }
-    case 'json_pointer':
-      return { type: 'json_pointer', pointer: '', op: 'equals', value: '' }
-    case 'text':
-      return { type: 'text', op: 'contains', value: '' }
-    case 'mime':
-      return { type: 'mime', mode: 'prefix', pattern: 'application/json' }
-    case 'size':
-      return { type: 'size', op: 'lt', value: '1048576' }
-    case 'probability':
-      return { type: 'probability', value: '1.0' }
-    case 'stage':
-      return { type: 'stage', value: 'request' }
-    case 'time_window':
-      return { type: 'time_window', value: '09:00-18:00' }
+    case 'setUrl':
+    case 'setMethod':
+      return { type, value: '' }
+    case 'setHeader':
+    case 'setQueryParam':
+    case 'setCookie':
+    case 'setFormField':
+      return { type, name: '', value: '' }
+    case 'removeHeader':
+    case 'removeQueryParam':
+    case 'removeCookie':
+    case 'removeFormField':
+      return { type, name: '' }
+    case 'setBody':
+      return { type, value: '', encoding: 'text' }
+    case 'replaceBodyText':
+      return { type, search: '', replace: '', replaceAll: false }
+    case 'patchBodyJson':
+      return { type, patches: [] }
+    case 'setStatus':
+      return { type, value: 200 }
+    case 'block':
+      return { type, statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: '{}' }
     default:
-      return { type: 'url', mode: 'prefix', pattern: '' }
+      return { type }
   }
 }
 
-export function createEmptyRule(): Rule {
+// 创建空规则
+export function createEmptyRule(stage: Stage = 'request'): Rule {
   return {
     id: `rule_${Date.now()}`,
+    name: '新规则',
+    enabled: true,
     priority: 100,
-    mode: 'short_circuit',
+    stage,
     match: {
-      allOf: [createEmptyCondition('url')]
+      allOf: [createEmptyCondition('urlPrefix')]
     },
-    action: {}
+    actions: []
   }
 }
 
+// 创建空规则集
 export function createEmptyRuleSet(): RuleSet {
   return {
-    version: '1.0',
+    version: '2.0',
     rules: []
   }
 }
 
-// 条件类型的中文标签
-export const CONDITION_TYPE_LABELS: Record<ConditionType, string> = {
-  url: 'URL',
-  method: '请求方法',
-  header: '请求头',
-  query: 'Query参数',
-  cookie: 'Cookie',
-  json_pointer: 'JSON路径',
-  text: '文本内容',
-  mime: 'MIME类型',
-  size: '体积大小',
-  probability: '概率采样',
-  stage: '拦截阶段',
-  time_window: '时间窗口'
+// 创建空配置
+export function createEmptyConfig(): Config {
+  return {
+    id: `config_${Date.now()}`,
+    name: '新配置',
+    version: '2.0',
+    rules: []
+  }
 }
 
-// 操作符的中文标签
-export const CONDITION_OP_LABELS: Record<ConditionOp, string> = {
-  equals: '等于',
-  contains: '包含',
-  regex: '正则匹配',
-  lt: '小于',
-  lte: '小于等于',
-  gt: '大于',
-  gte: '大于等于',
-  between: '范围内'
+// 判断行为是否为终结性
+export function isTerminalAction(action: Action): boolean {
+  return TERMINAL_ACTIONS.includes(action.type)
 }
 
-// 模式的中文标签
-export const CONDITION_MODE_LABELS: Record<ConditionMode, string> = {
-  prefix: '前缀匹配',
-  regex: '正则匹配',
-  exact: '精确匹配'
+// 判断行为是否适用于指定阶段
+export function isActionValidForStage(actionType: ActionType, stage: Stage): boolean {
+  if (stage === 'request') {
+    return REQUEST_ACTIONS.includes(actionType)
+  }
+  return RESPONSE_ACTIONS.includes(actionType)
 }
 
-// HTTP 方法选项
-export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']
+// 获取阶段可用的行为类型
+export function getActionsForStage(stage: Stage): ActionType[] {
+  return stage === 'request' ? REQUEST_ACTIONS : RESPONSE_ACTIONS
+}
+
+// 获取条件需要的字段
+export function getConditionFields(type: ConditionType): ('value' | 'values' | 'pattern' | 'name' | 'path')[] {
+  if (type === 'method' || type === 'resourceType') {
+    return ['values']
+  }
+  if (type.endsWith('Regex')) {
+    if (type.startsWith('url') || type.startsWith('body')) {
+      return ['pattern']
+    }
+    return ['name', 'pattern']
+  }
+  if (type.endsWith('Exists') || type.endsWith('NotExists')) {
+    return ['name']
+  }
+  if (type.startsWith('header') || type.startsWith('query') || type.startsWith('cookie')) {
+    return ['name', 'value']
+  }
+  if (type === 'bodyJsonPath') {
+    return ['path', 'value']
+  }
+  return ['value']
+}

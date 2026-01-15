@@ -1,364 +1,296 @@
-import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { X, Plus, Trash2 } from 'lucide-react'
-import type { 
-  Action, 
-  Rewrite, 
-  Respond, 
-  Fail, 
-  Pause,
-  JSONPatchOp,
-  JSONPatchOpType,
-  PauseStage,
-  PauseDefaultActionType
+import { Badge } from '@/components/ui/badge'
+import { X, Plus, Trash2, GripVertical, AlertCircle } from 'lucide-react'
+import type { Action, ActionType, Stage, JSONPatchOp, BodyEncoding } from '@/types/rules'
+import {
+  ACTION_TYPE_LABELS,
+  createEmptyAction,
+  isTerminalAction,
+  getActionsForStage
 } from '@/types/rules'
 
 interface ActionEditorProps {
   action: Action
   onChange: (action: Action) => void
+  onRemove: () => void
+  stage: Stage
 }
 
-type ActionType = 'none' | 'rewrite' | 'respond' | 'fail' | 'pause'
-
-function getActionType(action: Action): ActionType {
-  if (action.respond) return 'respond'
-  if (action.fail) return 'fail'
-  if (action.pause) return 'pause'
-  if (action.rewrite) return 'rewrite'
-  return 'none'
+// 获取行为类型选项
+function getActionTypeOptions(stage: Stage): { value: ActionType; label: string }[] {
+  const actions = getActionsForStage(stage)
+  return actions.map(type => ({
+    value: type,
+    label: ACTION_TYPE_LABELS[type]
+  }))
 }
 
-export function ActionEditor({ action, onChange }: ActionEditorProps) {
-  const [activeTab, setActiveTab] = useState<ActionType>(getActionType(action) || 'rewrite')
-
-  const handleTabChange = (tab: string) => {
-    setActiveTab(tab as ActionType)
-    // 切换 tab 时清除其他类型的配置
-    const newAction: Action = {
-      delayMS: action.delayMS,
-      dropRate: action.dropRate,
-    }
-    onChange(newAction)
+export function ActionEditor({ action, onChange, onRemove, stage }: ActionEditorProps) {
+  const handleTypeChange = (newType: ActionType) => {
+    onChange(createEmptyAction(newType, stage))
   }
 
+  const isTerminal = isTerminalAction(action)
+
   return (
-    <div className="space-y-4">
-      {/* 通用选项：延迟和丢弃率 */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <label className="text-sm font-medium">延迟注入 (ms)</label>
-          <Input
-            type="number"
-            value={action.delayMS || ''}
-            onChange={(e) => onChange({ ...action, delayMS: parseInt(e.target.value) || undefined })}
-            placeholder="0"
-            min={0}
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="text-sm font-medium">丢弃率 (0-1)</label>
-          <Input
-            type="number"
-            value={action.dropRate || ''}
-            onChange={(e) => onChange({ ...action, dropRate: parseFloat(e.target.value) || undefined })}
-            placeholder="0"
-            min={0}
-            max={1}
-            step={0.1}
-          />
-        </div>
-      </div>
-
-      {/* 动作类型选择 */}
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList className="grid grid-cols-5 w-full">
-          <TabsTrigger value="none">无动作</TabsTrigger>
-          <TabsTrigger value="rewrite">重写</TabsTrigger>
-          <TabsTrigger value="respond">直接响应</TabsTrigger>
-          <TabsTrigger value="fail">模拟失败</TabsTrigger>
-          <TabsTrigger value="pause">暂停审批</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="none" className="pt-4">
-          <div className="text-sm text-muted-foreground text-center p-4 border rounded-lg border-dashed">
-            仅执行延迟/丢弃，不做其他修改
+    <div className={`p-3 rounded-lg border bg-card ${isTerminal ? 'border-destructive/50 bg-destructive/5' : ''}`}>
+      <div className="flex items-start gap-2">
+        <GripVertical className="w-4 h-4 text-muted-foreground mt-2 cursor-grab shrink-0" />
+        
+        {/* 行为类型选择 */}
+        <div className="flex-1 space-y-3">
+          <div className="flex items-center gap-2">
+            <Select
+              value={action.type}
+              onChange={(e) => handleTypeChange(e.target.value as ActionType)}
+              options={getActionTypeOptions(stage)}
+              className="w-40"
+            />
+            {isTerminal && (
+              <Badge variant="destructive" className="text-xs">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                终结性
+              </Badge>
+            )}
           </div>
-        </TabsContent>
 
-        <TabsContent value="rewrite" className="pt-4">
-          <RewriteEditor
-            rewrite={action.rewrite || {}}
-            onChange={(rewrite) => onChange({ ...action, rewrite, respond: undefined, fail: undefined, pause: undefined })}
-          />
-        </TabsContent>
-
-        <TabsContent value="respond" className="pt-4">
-          <RespondEditor
-            respond={action.respond || { status: 200 }}
-            onChange={(respond) => onChange({ ...action, respond, rewrite: undefined, fail: undefined, pause: undefined })}
-          />
-        </TabsContent>
-
-        <TabsContent value="fail" className="pt-4">
-          <FailEditor
-            fail={action.fail || { reason: 'ConnectionFailed' }}
-            onChange={(fail) => onChange({ ...action, fail, rewrite: undefined, respond: undefined, pause: undefined })}
-          />
-        </TabsContent>
-
-        <TabsContent value="pause" className="pt-4">
-          <PauseEditor
-            pause={action.pause || { stage: 'request', timeoutMS: 5000, defaultAction: { type: 'continue_original' } }}
-            onChange={(pause) => onChange({ ...action, pause, rewrite: undefined, respond: undefined, fail: undefined })}
-          />
-        </TabsContent>
-      </Tabs>
-    </div>
-  )
-}
-
-// ========== Rewrite 编辑器 ==========
-
-function RewriteEditor({ rewrite, onChange }: { rewrite: Rewrite; onChange: (r: Rewrite) => void }) {
-  return (
-    <div className="space-y-4">
-      {/* URL 和 Method */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <label className="text-sm font-medium">重写 URL</label>
-          <Input
-            value={rewrite.url || ''}
-            onChange={(e) => onChange({ ...rewrite, url: e.target.value || undefined })}
-            placeholder="留空不修改"
-          />
+          {/* 根据行为类型渲染字段 */}
+          {renderActionFields(action, onChange)}
         </div>
-        <div className="space-y-1">
-          <label className="text-sm font-medium">重写 Method</label>
-          <Select
-            value={rewrite.method || ''}
-            onChange={(e) => onChange({ ...rewrite, method: e.target.value || undefined })}
-            options={[
-              { value: '', label: '不修改' },
-              { value: 'GET', label: 'GET' },
-              { value: 'POST', label: 'POST' },
-              { value: 'PUT', label: 'PUT' },
-              { value: 'DELETE', label: 'DELETE' },
-              { value: 'PATCH', label: 'PATCH' },
-            ]}
-          />
-        </div>
+
+        {/* 删除按钮 */}
+        <Button variant="ghost" size="icon" onClick={onRemove} className="shrink-0">
+          <X className="w-4 h-4" />
+        </Button>
       </div>
-
-      {/* Headers 编辑 */}
-      <KeyValueEditor
-        title="修改 Headers"
-        data={rewrite.headers || {}}
-        onChange={(headers) => onChange({ ...rewrite, headers: Object.keys(headers).length ? headers : undefined })}
-        keyPlaceholder="Header 名"
-        valuePlaceholder="值 (留空表示删除)"
-      />
-
-      {/* Query 编辑 */}
-      <KeyValueEditor
-        title="修改 Query 参数"
-        data={rewrite.query || {}}
-        onChange={(query) => onChange({ ...rewrite, query: Object.keys(query).length ? query : undefined })}
-        keyPlaceholder="参数名"
-        valuePlaceholder="值 (留空表示删除)"
-      />
-
-      {/* Body JSON Patch */}
-      <JSONPatchEditor
-        patches={rewrite.body?.jsonPatch || []}
-        onChange={(jsonPatch) => onChange({ 
-          ...rewrite, 
-          body: jsonPatch.length ? { ...rewrite.body, jsonPatch } : undefined 
-        })}
-      />
     </div>
   )
 }
 
-// ========== Respond 编辑器 ==========
+// 渲染行为字段
+function renderActionFields(action: Action, onChange: (action: Action) => void) {
+  const updateField = <K extends keyof Action>(key: K, value: Action[K]) => {
+    onChange({ ...action, [key]: value })
+  }
 
-function RespondEditor({ respond, onChange }: { respond: Respond; onChange: (r: Respond) => void }) {
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <label className="text-sm font-medium">HTTP 状态码</label>
+  switch (action.type) {
+    case 'setUrl':
+      return (
+        <Input
+          value={(action.value as string) || ''}
+          onChange={(e) => updateField('value', e.target.value)}
+          placeholder="新的 URL..."
+        />
+      )
+
+    case 'setMethod':
+      return (
+        <Select
+          value={(action.value as string) || ''}
+          onChange={(e) => updateField('value', e.target.value)}
+          options={[
+            { value: 'GET', label: 'GET' },
+            { value: 'POST', label: 'POST' },
+            { value: 'PUT', label: 'PUT' },
+            { value: 'DELETE', label: 'DELETE' },
+            { value: 'PATCH', label: 'PATCH' },
+            { value: 'HEAD', label: 'HEAD' },
+            { value: 'OPTIONS', label: 'OPTIONS' },
+          ]}
+          className="w-32"
+        />
+      )
+
+    case 'setHeader':
+    case 'setQueryParam':
+    case 'setCookie':
+    case 'setFormField':
+      return (
+        <div className="flex items-center gap-2">
           <Input
-            type="number"
-            value={respond.status}
-            onChange={(e) => onChange({ ...respond, status: parseInt(e.target.value) || 200 })}
-            min={100}
-            max={599}
+            value={action.name || ''}
+            onChange={(e) => updateField('name', e.target.value)}
+            placeholder={getNamePlaceholder(action.type)}
+            className="w-40"
+          />
+          <Input
+            value={(action.value as string) || ''}
+            onChange={(e) => updateField('value', e.target.value)}
+            placeholder="值..."
+            className="flex-1"
           />
         </div>
-        <div className="space-y-1 flex items-end">
-          <label className="flex items-center gap-2 cursor-pointer">
+      )
+
+    case 'removeHeader':
+    case 'removeQueryParam':
+    case 'removeCookie':
+    case 'removeFormField':
+      return (
+        <Input
+          value={action.name || ''}
+          onChange={(e) => updateField('name', e.target.value)}
+          placeholder={getNamePlaceholder(action.type)}
+          className="w-60"
+        />
+      )
+
+    case 'setBody':
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Select
+              value={action.encoding || 'text'}
+              onChange={(e) => updateField('encoding', e.target.value as BodyEncoding)}
+              options={[
+                { value: 'text', label: '文本' },
+                { value: 'base64', label: 'Base64' },
+              ]}
+              className="w-28"
+            />
+          </div>
+          <Textarea
+            value={(action.value as string) || ''}
+            onChange={(e) => updateField('value', e.target.value)}
+            placeholder={action.encoding === 'base64' ? 'Base64 编码内容...' : 'Body 内容...'}
+            rows={4}
+            className="font-mono text-sm"
+          />
+        </div>
+      )
+
+    case 'replaceBodyText':
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Input
+              value={action.search || ''}
+              onChange={(e) => updateField('search', e.target.value)}
+              placeholder="搜索文本..."
+              className="flex-1"
+            />
+            <Input
+              value={action.replace || ''}
+              onChange={(e) => updateField('replace', e.target.value)}
+              placeholder="替换为..."
+              className="flex-1"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input
               type="checkbox"
-              checked={respond.base64 || false}
-              onChange={(e) => onChange({ ...respond, base64: e.target.checked })}
+              checked={action.replaceAll || false}
+              onChange={(e) => updateField('replaceAll', e.target.checked)}
               className="rounded"
             />
-            <span className="text-sm">Body 为 Base64 编码</span>
+            替换所有匹配
           </label>
         </div>
-      </div>
+      )
 
-      <KeyValueEditor
-        title="响应 Headers"
-        data={respond.headers || {}}
-        onChange={(headers) => {
-          const filtered: Record<string, string> = {}
-          for (const [k, v] of Object.entries(headers)) {
-            if (v !== null) filtered[k] = v
-          }
-          onChange({ ...respond, headers: Object.keys(filtered).length ? filtered : undefined })
-        }}
-        keyPlaceholder="Header 名"
-        valuePlaceholder="Header 值"
-        allowNull={false}
-      />
-
-      <div className="space-y-1">
-        <label className="text-sm font-medium">响应 Body</label>
-        <Textarea
-          value={respond.body || ''}
-          onChange={(e) => onChange({ ...respond, body: e.target.value || undefined })}
-          placeholder={respond.base64 ? 'Base64 编码内容...' : 'JSON 或文本内容...'}
-          rows={5}
-          className="font-mono text-sm"
+    case 'patchBodyJson':
+      return (
+        <JSONPatchEditor
+          patches={action.patches || []}
+          onChange={(patches) => updateField('patches', patches)}
         />
-      </div>
-    </div>
-  )
-}
+      )
 
-// ========== Fail 编辑器 ==========
-
-function FailEditor({ fail, onChange }: { fail: Fail; onChange: (f: Fail) => void }) {
-  const failReasons = [
-    { value: 'Failed', label: 'Failed - 通用失败' },
-    { value: 'Aborted', label: 'Aborted - 请求中止' },
-    { value: 'TimedOut', label: 'TimedOut - 超时' },
-    { value: 'AccessDenied', label: 'AccessDenied - 拒绝访问' },
-    { value: 'ConnectionClosed', label: 'ConnectionClosed - 连接关闭' },
-    { value: 'ConnectionReset', label: 'ConnectionReset - 连接重置' },
-    { value: 'ConnectionRefused', label: 'ConnectionRefused - 连接拒绝' },
-    { value: 'ConnectionAborted', label: 'ConnectionAborted - 连接中止' },
-    { value: 'ConnectionFailed', label: 'ConnectionFailed - 连接失败' },
-    { value: 'NameNotResolved', label: 'NameNotResolved - DNS解析失败' },
-    { value: 'InternetDisconnected', label: 'InternetDisconnected - 断网' },
-    { value: 'AddressUnreachable', label: 'AddressUnreachable - 地址不可达' },
-    { value: 'BlockedByClient', label: 'BlockedByClient - 被客户端阻止' },
-    { value: 'BlockedByResponse', label: 'BlockedByResponse - 被响应阻止' },
-  ]
-
-  return (
-    <div className="space-y-4">
-      <div className="space-y-1">
-        <label className="text-sm font-medium">失败原因</label>
-        <Select
-          value={fail.reason}
-          onChange={(e) => onChange({ reason: e.target.value })}
-          options={failReasons}
+    case 'setStatus':
+      return (
+        <Input
+          type="number"
+          value={(action.value as number) || 200}
+          onChange={(e) => updateField('value', parseInt(e.target.value) || 200)}
+          placeholder="状态码"
+          min={100}
+          max={599}
+          className="w-24"
         />
-      </div>
-      <div className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
-        模拟网络错误，请求将直接失败，不会发送到服务器。
-      </div>
-    </div>
-  )
-}
+      )
 
-// ========== Pause 编辑器 ==========
-
-function PauseEditor({ pause, onChange }: { pause: Pause; onChange: (p: Pause) => void }) {
-  const defaultActionTypes: { value: PauseDefaultActionType; label: string }[] = [
-    { value: 'continue_original', label: '继续原请求' },
-    { value: 'continue_mutated', label: '继续（应用自动重写）' },
-    { value: 'fulfill', label: '返回自定义响应' },
-    { value: 'fail', label: '使请求失败' },
-  ]
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <label className="text-sm font-medium">暂停阶段</label>
-          <Select
-            value={pause.stage}
-            onChange={(e) => onChange({ ...pause, stage: e.target.value as PauseStage })}
-            options={[
-              { value: 'request', label: '请求阶段' },
-              { value: 'response', label: '响应阶段' },
-            ]}
+    case 'block':
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              value={action.statusCode || 200}
+              onChange={(e) => onChange({ ...action, statusCode: parseInt(e.target.value) || 200 })}
+              placeholder="状态码"
+              min={100}
+              max={599}
+              className="w-24"
+            />
+            <Select
+              value={action.bodyEncoding || 'text'}
+              onChange={(e) => onChange({ ...action, bodyEncoding: e.target.value as BodyEncoding })}
+              options={[
+                { value: 'text', label: '文本' },
+                { value: 'base64', label: 'Base64' },
+              ]}
+              className="w-28"
+            />
+          </div>
+          <KeyValueEditor
+            title="响应头"
+            data={action.headers || {}}
+            onChange={(headers) => onChange({ ...action, headers })}
+          />
+          <Textarea
+            value={action.body || ''}
+            onChange={(e) => onChange({ ...action, body: e.target.value })}
+            placeholder={action.bodyEncoding === 'base64' ? 'Base64 编码的响应体...' : '响应体内容...'}
+            rows={4}
+            className="font-mono text-sm"
           />
         </div>
-        <div className="space-y-1">
-          <label className="text-sm font-medium">超时时间 (ms)</label>
-          <Input
-            type="number"
-            value={pause.timeoutMS}
-            onChange={(e) => onChange({ ...pause, timeoutMS: parseInt(e.target.value) || 5000 })}
-            min={1000}
-            max={60000}
-          />
-        </div>
-      </div>
+      )
 
-      <div className="space-y-1">
-        <label className="text-sm font-medium">超时后默认动作</label>
-        <Select
-          value={pause.defaultAction.type}
-          onChange={(e) => onChange({ 
-            ...pause, 
-            defaultAction: { ...pause.defaultAction, type: e.target.value as PauseDefaultActionType } 
-          })}
-          options={defaultActionTypes}
-        />
-      </div>
-
-      <div className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
-        请求/响应将暂停等待人工审批。超时后自动执行默认动作。
-      </div>
-    </div>
-  )
+    default:
+      return null
+  }
 }
 
-// ========== 通用 Key-Value 编辑器 ==========
+// 获取 name 字段占位符
+function getNamePlaceholder(type: ActionType): string {
+  switch (type) {
+    case 'setHeader':
+    case 'removeHeader':
+      return 'Header 名'
+    case 'setQueryParam':
+    case 'removeQueryParam':
+      return '参数名'
+    case 'setCookie':
+    case 'removeCookie':
+      return 'Cookie 名'
+    case 'setFormField':
+    case 'removeFormField':
+      return '字段名'
+    default:
+      return '名称'
+  }
+}
+
+// ==================== Key-Value 编辑器 ====================
 
 interface KeyValueEditorProps {
   title: string
-  data: Record<string, string | null>
-  onChange: (data: Record<string, string | null>) => void
-  keyPlaceholder?: string
-  valuePlaceholder?: string
-  allowNull?: boolean
+  data: Record<string, string>
+  onChange: (data: Record<string, string>) => void
 }
 
-function KeyValueEditor({ 
-  title, 
-  data, 
-  onChange, 
-  keyPlaceholder = 'Key',
-  valuePlaceholder = 'Value',
-  allowNull = true
-}: KeyValueEditorProps) {
+function KeyValueEditor({ title, data, onChange }: KeyValueEditorProps) {
   const entries = Object.entries(data)
 
   const addEntry = () => {
     onChange({ ...data, '': '' })
   }
 
-  const updateEntry = (oldKey: string, newKey: string, value: string | null) => {
+  const updateEntry = (oldKey: string, newKey: string, value: string) => {
     const newData = { ...data }
     if (oldKey !== newKey) {
       delete newData[oldKey]
@@ -382,7 +314,7 @@ function KeyValueEditor({
           添加
         </Button>
       </div>
-      
+
       {entries.length === 0 ? (
         <div className="text-sm text-muted-foreground p-2 border rounded border-dashed text-center">
           暂无配置
@@ -394,13 +326,13 @@ function KeyValueEditor({
               <Input
                 value={key}
                 onChange={(e) => updateEntry(key, e.target.value, value)}
-                placeholder={keyPlaceholder}
+                placeholder="键"
                 className="flex-1"
               />
               <Input
-                value={value || ''}
-                onChange={(e) => updateEntry(key, key, e.target.value || (allowNull ? null : ''))}
-                placeholder={valuePlaceholder}
+                value={value}
+                onChange={(e) => updateEntry(key, key, e.target.value)}
+                placeholder="值"
                 className="flex-1"
               />
               <Button variant="ghost" size="icon" onClick={() => removeEntry(key)}>
@@ -414,7 +346,7 @@ function KeyValueEditor({
   )
 }
 
-// ========== JSON Patch 编辑器 ==========
+// ==================== JSON Patch 编辑器 ====================
 
 interface JSONPatchEditorProps {
   patches: JSONPatchOp[]
@@ -422,7 +354,7 @@ interface JSONPatchEditorProps {
 }
 
 function JSONPatchEditor({ patches, onChange }: JSONPatchEditorProps) {
-  const opOptions: { value: JSONPatchOpType; label: string }[] = [
+  const opOptions = [
     { value: 'add', label: '添加' },
     { value: 'remove', label: '删除' },
     { value: 'replace', label: '替换' },
@@ -447,7 +379,7 @@ function JSONPatchEditor({ patches, onChange }: JSONPatchEditorProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium">Body JSON Patch (RFC6902)</label>
+        <label className="text-sm font-medium">JSON Patch 操作</label>
         <Button variant="outline" size="sm" onClick={addPatch}>
           <Plus className="w-4 h-4 mr-1" />
           添加操作
@@ -461,10 +393,10 @@ function JSONPatchEditor({ patches, onChange }: JSONPatchEditorProps) {
       ) : (
         <div className="space-y-2">
           {patches.map((patch, index) => (
-            <div key={index} className="flex items-center gap-2 p-2 border rounded bg-card">
+            <div key={index} className="flex items-center gap-2 p-2 border rounded bg-muted/30">
               <Select
                 value={patch.op}
-                onChange={(e) => updatePatch(index, { ...patch, op: e.target.value as JSONPatchOpType })}
+                onChange={(e) => updatePatch(index, { ...patch, op: e.target.value as JSONPatchOp['op'] })}
                 options={opOptions}
                 className="w-24"
               />
@@ -472,7 +404,7 @@ function JSONPatchEditor({ patches, onChange }: JSONPatchEditorProps) {
                 value={patch.path}
                 onChange={(e) => updatePatch(index, { ...patch, path: e.target.value })}
                 placeholder="路径 (如 /data/id)"
-                className="w-40"
+                className="w-36"
               />
               {(patch.op === 'move' || patch.op === 'copy') && (
                 <Input
@@ -487,7 +419,7 @@ function JSONPatchEditor({ patches, onChange }: JSONPatchEditorProps) {
                   value={typeof patch.value === 'string' ? patch.value : JSON.stringify(patch.value)}
                   onChange={(e) => {
                     let val: any = e.target.value
-                    try { val = JSON.parse(e.target.value) } catch {}
+                    try { val = JSON.parse(e.target.value) } catch { }
                     updatePatch(index, { ...patch, value: val })
                   }}
                   placeholder="值 (JSON)"
@@ -498,6 +430,64 @@ function JSONPatchEditor({ patches, onChange }: JSONPatchEditorProps) {
                 <Trash2 className="w-4 h-4" />
               </Button>
             </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ==================== Actions 列表编辑器 ====================
+
+interface ActionsEditorProps {
+  actions: Action[]
+  onChange: (actions: Action[]) => void
+  stage: Stage
+}
+
+export function ActionsEditor({ actions, onChange, stage }: ActionsEditorProps) {
+  const addAction = () => {
+    const defaultType = stage === 'request' ? 'setHeader' : 'setHeader'
+    onChange([...actions, createEmptyAction(defaultType, stage)])
+  }
+
+  const updateAction = (index: number, action: Action) => {
+    const newActions = [...actions]
+    newActions[index] = action
+    onChange(newActions)
+  }
+
+  const removeAction = (index: number) => {
+    onChange(actions.filter((_, i) => i !== index))
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="font-medium">执行行为</h4>
+          <p className="text-xs text-muted-foreground">按顺序依次执行，终结性行为会中断后续执行</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={addAction}>
+          <Plus className="w-4 h-4 mr-1" />
+          添加行为
+        </Button>
+      </div>
+
+      {actions.length === 0 ? (
+        <div className="text-sm text-muted-foreground p-4 border rounded-lg border-dashed text-center">
+          暂无行为，点击上方按钮添加
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {actions.map((action, index) => (
+            <ActionEditor
+              key={index}
+              action={action}
+              onChange={(a) => updateAction(index, a)}
+              onRemove={() => removeAction(index)}
+              stage={stage}
+            />
           ))}
         </div>
       )}

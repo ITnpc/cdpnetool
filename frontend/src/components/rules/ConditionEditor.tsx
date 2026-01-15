@@ -3,17 +3,14 @@ import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { X, Plus } from 'lucide-react'
-import type { 
-  Condition, 
-  ConditionType, 
-  ConditionMode, 
-  ConditionOp 
-} from '@/types/rules'
-import { 
-  CONDITION_TYPE_LABELS, 
-  CONDITION_MODE_LABELS,
+import type { Condition, ConditionType } from '@/types/rules'
+import {
+  CONDITION_TYPE_SHORT_LABELS,
+  CONDITION_GROUPS,
   HTTP_METHODS,
-  createEmptyCondition 
+  RESOURCE_TYPES,
+  createEmptyCondition,
+  getConditionFields
 } from '@/types/rules'
 
 interface ConditionEditorProps {
@@ -22,33 +19,21 @@ interface ConditionEditorProps {
   onRemove: () => void
 }
 
-// 条件类型选项
-const conditionTypeOptions = Object.entries(CONDITION_TYPE_LABELS)
-  .filter(([key]) => key !== 'time_window') // 暂不支持时间窗口
-  .map(([value, label]) => ({ value, label }))
-
-// 模式选项
-const modeOptions = Object.entries(CONDITION_MODE_LABELS).map(([value, label]) => ({ value, label }))
-
-// 操作符选项（字符串类型）
-const stringOpOptions: { value: ConditionOp; label: string }[] = [
-  { value: 'equals', label: '等于' },
-  { value: 'contains', label: '包含' },
-  { value: 'regex', label: '正则匹配' },
-]
-
-// 操作符选项（数字类型）
-const numericOpOptions: { value: ConditionOp; label: string }[] = [
-  { value: 'lt', label: '小于' },
-  { value: 'lte', label: '小于等于' },
-  { value: 'gt', label: '大于' },
-  { value: 'gte', label: '大于等于' },
-]
-
-// 阶段选项
-const stageOptions = [
-  { value: 'request', label: '请求阶段' },
-  { value: 'response', label: '响应阶段' },
+// 条件类型选项（扁平化列表）
+const conditionTypeOptions: { value: ConditionType; label: string }[] = [
+  // URL
+  ...CONDITION_GROUPS.url.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
+  // 方法/资源
+  ...CONDITION_GROUPS.method.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
+  ...CONDITION_GROUPS.resourceType.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
+  // Header
+  ...CONDITION_GROUPS.header.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
+  // Query
+  ...CONDITION_GROUPS.query.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
+  // Cookie
+  ...CONDITION_GROUPS.cookie.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
+  // Body
+  ...CONDITION_GROUPS.body.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
 ]
 
 export function ConditionEditor({ condition, onChange, onRemove }: ConditionEditorProps) {
@@ -60,6 +45,8 @@ export function ConditionEditor({ condition, onChange, onRemove }: ConditionEdit
     onChange({ ...condition, [key]: value })
   }
 
+  const fields = getConditionFields(condition.type)
+
   return (
     <div className="flex items-start gap-2 p-3 rounded-lg border bg-card">
       {/* 条件类型选择 */}
@@ -67,12 +54,12 @@ export function ConditionEditor({ condition, onChange, onRemove }: ConditionEdit
         value={condition.type}
         onChange={(e) => handleTypeChange(e.target.value as ConditionType)}
         options={conditionTypeOptions}
-        className="w-32"
+        className="w-32 shrink-0"
       />
 
-      {/* 根据条件类型渲染不同的编辑器 */}
+      {/* 根据条件类型渲染字段 */}
       <div className="flex-1 flex items-center gap-2 flex-wrap">
-        {renderConditionFields(condition, updateField)}
+        {renderConditionFields(condition, fields, updateField)}
       </div>
 
       {/* 删除按钮 */}
@@ -83,214 +70,134 @@ export function ConditionEditor({ condition, onChange, onRemove }: ConditionEdit
   )
 }
 
-// 根据条件类型渲染对应的字段
+// 渲染条件字段
 function renderConditionFields(
-  condition: Condition, 
+  condition: Condition,
+  fields: ReturnType<typeof getConditionFields>,
   updateField: <K extends keyof Condition>(key: K, value: Condition[K]) => void
 ) {
-  switch (condition.type) {
-    case 'url':
-      return (
-        <>
-          <Select
-            value={condition.mode || 'prefix'}
-            onChange={(e) => updateField('mode', e.target.value as ConditionMode)}
-            options={modeOptions}
-            className="w-28"
-          />
-          <Input
-            value={condition.pattern || ''}
-            onChange={(e) => updateField('pattern', e.target.value)}
-            placeholder="URL 模式..."
-            className="flex-1 min-w-[200px]"
-          />
-        </>
-      )
+  const { type } = condition
 
-    case 'method':
-      return (
-        <MethodSelector
-          values={condition.values || []}
-          onChange={(values) => updateField('values', values)}
-        />
-      )
+  // Method 多选
+  if (type === 'method') {
+    return (
+      <MultiValueSelector
+        values={condition.values || []}
+        options={[...HTTP_METHODS]}
+        onChange={(values) => updateField('values', values)}
+      />
+    )
+  }
 
-    case 'header':
-    case 'query':
-    case 'cookie':
-      return (
-        <>
-          <Input
-            value={condition.key || ''}
-            onChange={(e) => updateField('key', e.target.value)}
-            placeholder={condition.type === 'header' ? 'Header 名' : condition.type === 'query' ? '参数名' : 'Cookie 名'}
-            className="w-32"
-          />
-          <Select
-            value={condition.op || 'equals'}
-            onChange={(e) => updateField('op', e.target.value as ConditionOp)}
-            options={stringOpOptions}
-            className="w-28"
-          />
-          <Input
-            value={condition.value || ''}
-            onChange={(e) => updateField('value', e.target.value)}
-            placeholder="值..."
-            className="flex-1 min-w-[150px]"
-          />
-        </>
-      )
+  // ResourceType 多选
+  if (type === 'resourceType') {
+    return (
+      <MultiValueSelector
+        values={condition.values || []}
+        options={[...RESOURCE_TYPES]}
+        onChange={(values) => updateField('values', values)}
+      />
+    )
+  }
 
-    case 'json_pointer':
-      return (
-        <>
-          <Input
-            value={condition.pointer || ''}
-            onChange={(e) => updateField('pointer', e.target.value)}
-            placeholder="JSON Pointer (如 /data/id)"
-            className="w-40"
-          />
-          <Select
-            value={condition.op || 'equals'}
-            onChange={(e) => updateField('op', e.target.value as ConditionOp)}
-            options={stringOpOptions}
-            className="w-28"
-          />
-          <Input
-            value={condition.value || ''}
-            onChange={(e) => updateField('value', e.target.value)}
-            placeholder="值..."
-            className="flex-1 min-w-[150px]"
-          />
-        </>
-      )
-
-    case 'text':
-      return (
-        <>
-          <Select
-            value={condition.op || 'contains'}
-            onChange={(e) => updateField('op', e.target.value as ConditionOp)}
-            options={stringOpOptions}
-            className="w-28"
-          />
-          <Input
-            value={condition.value || ''}
-            onChange={(e) => updateField('value', e.target.value)}
-            placeholder="文本内容..."
-            className="flex-1 min-w-[200px]"
-          />
-        </>
-      )
-
-    case 'mime':
-      return (
-        <>
-          <Select
-            value={condition.mode || 'prefix'}
-            onChange={(e) => updateField('mode', e.target.value as ConditionMode)}
-            options={[
-              { value: 'prefix', label: '前缀匹配' },
-              { value: 'exact', label: '精确匹配' },
-            ]}
-            className="w-28"
-          />
-          <Input
-            value={condition.pattern || ''}
-            onChange={(e) => updateField('pattern', e.target.value)}
-            placeholder="MIME 类型 (如 application/json)"
-            className="flex-1 min-w-[200px]"
-          />
-        </>
-      )
-
-    case 'size':
-      return (
-        <>
-          <Select
-            value={condition.op || 'lt'}
-            onChange={(e) => updateField('op', e.target.value as ConditionOp)}
-            options={numericOpOptions}
-            className="w-28"
-          />
-          <Input
-            value={condition.value || ''}
-            onChange={(e) => updateField('value', e.target.value)}
-            placeholder="字节数"
-            type="number"
-            className="w-32"
-          />
-          <span className="text-sm text-muted-foreground">bytes</span>
-        </>
-      )
-
-    case 'probability':
-      return (
-        <>
-          <Input
-            value={condition.value || '1.0'}
-            onChange={(e) => updateField('value', e.target.value)}
-            placeholder="0.0 - 1.0"
-            type="number"
-            step="0.1"
-            min="0"
-            max="1"
-            className="w-24"
-          />
-          <span className="text-sm text-muted-foreground">
-            ({Math.round(parseFloat(condition.value || '1') * 100)}% 概率触发)
-          </span>
-        </>
-      )
-
-    case 'stage':
-      return (
-        <Select
-          value={condition.value || 'request'}
-          onChange={(e) => updateField('value', e.target.value)}
-          options={stageOptions}
+  // 其他条件类型
+  return (
+    <>
+      {/* name 字段 */}
+      {fields.includes('name') && (
+        <Input
+          value={condition.name || ''}
+          onChange={(e) => updateField('name', e.target.value)}
+          placeholder={getNamePlaceholder(type)}
           className="w-32"
         />
-      )
+      )}
 
-    default:
-      return <span className="text-muted-foreground">暂不支持此条件类型</span>
-  }
+      {/* path 字段 (bodyJsonPath) */}
+      {fields.includes('path') && (
+        <Input
+          value={condition.path || ''}
+          onChange={(e) => updateField('path', e.target.value)}
+          placeholder="$.data.status"
+          className="w-40"
+        />
+      )}
+
+      {/* value 字段 */}
+      {fields.includes('value') && (
+        <Input
+          value={condition.value || ''}
+          onChange={(e) => updateField('value', e.target.value)}
+          placeholder={getValuePlaceholder(type)}
+          className="flex-1 min-w-[150px]"
+        />
+      )}
+
+      {/* pattern 字段 */}
+      {fields.includes('pattern') && (
+        <Input
+          value={condition.pattern || ''}
+          onChange={(e) => updateField('pattern', e.target.value)}
+          placeholder="正则表达式..."
+          className="flex-1 min-w-[150px]"
+        />
+      )}
+    </>
+  )
 }
 
-// HTTP 方法多选组件
-function MethodSelector({ 
-  values, 
-  onChange 
-}: { 
+// 获取 name 字段占位符
+function getNamePlaceholder(type: ConditionType): string {
+  if (type.startsWith('header')) return 'Header 名'
+  if (type.startsWith('query')) return '参数名'
+  if (type.startsWith('cookie')) return 'Cookie 名'
+  return '名称'
+}
+
+// 获取 value 字段占位符
+function getValuePlaceholder(type: ConditionType): string {
+  if (type.startsWith('url')) return 'URL...'
+  if (type === 'bodyContains') return '包含的文本...'
+  if (type === 'bodyJsonPath') return '期望值'
+  return '值...'
+}
+
+// 多值选择器组件
+function MultiValueSelector({
+  values,
+  options,
+  onChange
+}: {
   values: string[]
-  onChange: (values: string[]) => void 
+  options: string[]
+  onChange: (values: string[]) => void
 }) {
-  const toggleMethod = (method: string) => {
-    if (values.includes(method)) {
-      onChange(values.filter(m => m !== method))
+  const toggleValue = (value: string) => {
+    if (values.includes(value)) {
+      onChange(values.filter(v => v !== value))
     } else {
-      onChange([...values, method])
+      onChange([...values, value])
     }
   }
 
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      {HTTP_METHODS.map(method => (
+      {options.map(option => (
         <Badge
-          key={method}
-          variant={values.includes(method) ? 'default' : 'outline'}
-          className="cursor-pointer"
-          onClick={() => toggleMethod(method)}
+          key={option}
+          variant={values.includes(option) ? 'default' : 'outline'}
+          className="cursor-pointer select-none"
+          onClick={() => toggleValue(option)}
         >
-          {method}
+          {option}
         </Badge>
       ))}
     </div>
   )
 }
 
-// 条件组编辑器（allOf / anyOf / noneOf）
+// ==================== 条件组编辑器 ====================
+
 interface ConditionGroupProps {
   title: string
   description: string
@@ -300,7 +207,7 @@ interface ConditionGroupProps {
 
 export function ConditionGroup({ title, description, conditions, onChange }: ConditionGroupProps) {
   const addCondition = () => {
-    onChange([...conditions, createEmptyCondition('url')])
+    onChange([...conditions, createEmptyCondition('urlPrefix')])
   }
 
   const updateCondition = (index: number, condition: Condition) => {
