@@ -614,37 +614,72 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
   const [showRuleSetManager, setShowRuleSetManager] = useState(false)
   const [editingName, setEditingName] = useState<number | null>(null)
   const [newName, setNewName] = useState('')
+  const [isInitializing, setIsInitializing] = useState(true) // 新增：初始化状态
 
   // 组件挂载时加载规则集列表和激活的规则集
   useEffect(() => {
     loadRuleSets()
+      .catch(e => {
+        console.error('Failed to load rule sets on mount:', e)
+        // 如果加载失败，至少确保有一个空的规则集
+        setRuleSet(createEmptyRuleSet())
+      })
+      .finally(() => {
+        setIsInitializing(false)
+      })
   }, [])
 
   // 加载规则集列表
   const loadRuleSets = async () => {
     try {
-      const result = await window.go?.gui?.App?.ListRuleSets()
+      // 检查 window.go 是否存在
+      if (!window.go?.gui?.App?.ListRuleSets) {
+        console.warn('Wails bindings not ready yet')
+        return
+      }
+      
+      const result = await window.go.gui.App.ListRuleSets()
       if (result?.success) {
         setRuleSets(result.ruleSets || [])
         // 查找激活的规则集
-        const activeResult = await window.go?.gui?.App?.GetActiveRuleSet()
+        const activeResult = await window.go.gui.App.GetActiveRuleSet()
         if (activeResult?.success && activeResult.ruleSet) {
           loadRuleSetData(activeResult.ruleSet)
         } else if (result.ruleSets && result.ruleSets.length > 0) {
           // 如果没有激活的，加载第一个
           loadRuleSetData(result.ruleSets[0])
+        } else {
+          // 如果没有任何规则集，创建一个默认的
+          setRuleSet(createEmptyRuleSet())
         }
       }
     } catch (e) {
       console.error('Load rule sets error:', e)
+      setRuleSet(createEmptyRuleSet())
     }
   }
 
   // 加载规则集数据到编辑器
   const loadRuleSetData = (record: RuleSetRecord) => {
     try {
-      const rules = record.rulesJson ? JSON.parse(record.rulesJson) : []
-      setRuleSet({ version: record.version || '1.0', rules })
+      if (!record.rulesJson) {
+        setRuleSet(createEmptyRuleSet())
+        setCurrentRuleSetId(record.id)
+        setCurrentRuleSetName(record.name)
+        return
+      }
+      
+      const parsed = JSON.parse(record.rulesJson)
+      // 兼容两种格式：数组或 { version, rules } 对象
+      if (Array.isArray(parsed)) {
+        setRuleSet({ version: record.version || '2.0', rules: parsed })
+      } else if (parsed.rules && Array.isArray(parsed.rules)) {
+        setRuleSet({ version: parsed.version || '2.0', rules: parsed.rules })
+      } else {
+        console.error('Invalid rules format:', parsed)
+        setRuleSet(createEmptyRuleSet())
+      }
+      
       setCurrentRuleSetId(record.id)
       setCurrentRuleSetName(record.name)
     } catch (e) {
@@ -666,7 +701,8 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
   const handleCreateRuleSet = async () => {
     const name = `规则集 ${new Date().toLocaleString()}`
     try {
-      const result = await window.go?.gui?.App?.SaveRuleSet(0, name, JSON.stringify({ version: '1.0', rules: [] }))
+      const emptyRuleSet = { version: '2.0', rules: [] }
+      const result = await window.go?.gui?.App?.SaveRuleSet(0, name, JSON.stringify(emptyRuleSet))
       if (result?.success && result.ruleSet) {
         await loadRuleSets()
         loadRuleSetData(result.ruleSet)
@@ -838,6 +874,16 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
 
   return (
     <div className="h-full flex flex-col">
+      {/* 初始化加载状态 */}
+      {isInitializing ? (
+        <div className="flex items-center justify-center h-full text-muted-foreground">
+          <div className="text-center">
+            <div className="text-lg mb-2">加载中...</div>
+            <div className="text-sm">正在初始化规则编辑器</div>
+          </div>
+        </div>
+      ) : (
+        <>
       {/* 工具栏 - 第一行：规则集选择 */}
       <div className="flex items-center gap-2 mb-2">
         <Button
@@ -902,7 +948,15 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
                         {rs.isActive && <span className="ml-1 text-xs text-primary">(激活)</span>}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {JSON.parse(rs.rulesJson || '[]').length} 规则
+                        {(() => {
+                          try {
+                            const parsed = JSON.parse(rs.rulesJson || '[]')
+                            const count = Array.isArray(parsed) ? parsed.length : (parsed.rules?.length || 0)
+                            return `${count} 规则`
+                          } catch {
+                            return '0 规则'
+                          }
+                        })()}
                       </span>
                       <Button
                         size="sm"
@@ -1011,6 +1065,8 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
       <div className="text-xs text-muted-foreground mt-2 pt-2 border-t">
         共 {ruleSet.rules.length} 条规则 · 版本 {ruleSet.version} · 规则集: {currentRuleSetName}
       </div>
+        </>
+      )}
     </div>
   )
 }
