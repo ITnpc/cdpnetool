@@ -30,8 +30,8 @@ type Service interface {
 	// DisableInterception 禁用拦截
 	DisableInterception(id model.SessionID) error
 
-	// LoadRules 加载规则
-	LoadRules(id model.SessionID, rs rulespec.RuleSet) error
+	// LoadRules 加载规则配置
+	LoadRules(id model.SessionID, cfg *rulespec.Config) error
 
 	// GetRuleStats 获取规则统计信息
 	GetRuleStats(id model.SessionID) (model.EngineStats, error)
@@ -42,11 +42,11 @@ type Service interface {
 	// SubscribePending 订阅待处理项
 	SubscribePending(id model.SessionID) (<-chan model.PendingItem, error)
 
-	// ApproveRequest 批准请求
-	ApproveRequest(itemID string, mutations rulespec.Rewrite) error
+	// ApproveRequest 批准请求（已废弃）
+	ApproveRequest(itemID string, mutations map[string]any) error
 
-	// ApproveResponse 批准响应
-	ApproveResponse(itemID string, mutations rulespec.Rewrite) error
+	// ApproveResponse 批准响应（已废弃）
+	ApproveResponse(itemID string, mutations map[string]any) error
 
 	// Reject 拒绝
 	Reject(itemID string) error

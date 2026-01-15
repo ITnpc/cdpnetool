@@ -23,7 +23,7 @@ type svc struct {
 type session struct {
 	id      model.SessionID
 	cfg     model.SessionConfig
-	rules   rulespec.RuleSet
+	config  *rulespec.Config
 	events  chan model.Event
 	pending chan model.PendingItem
 	mgr     *cdp.Manager
@@ -186,18 +186,18 @@ func (s *svc) DisableInterception(id model.SessionID) error {
 	return err
 }
 
-// LoadRules 为会话加载规则集并应用到管理器
-func (s *svc) LoadRules(id model.SessionID, rs rulespec.RuleSet) error {
+// LoadRules 为会话加载规则配置并应用到管理器
+func (s *svc) LoadRules(id model.SessionID, cfg *rulespec.Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ses, ok := s.sessions[id]
 	if !ok {
 		return errors.New("cdpnetool: session not found")
 	}
-	ses.rules = rs
-	s.log.Info("加载规则集完成", "session", string(id), "count", len(rs.Rules), "version", rs.Version)
+	ses.config = cfg
+	s.log.Info("加载规则配置完成", "session", string(id), "count", len(cfg.Rules), "version", cfg.Version)
 	if ses.mgr != nil {
-		ses.mgr.UpdateRules(rs)
+		ses.mgr.UpdateRules(cfg)
 	}
 	return nil
 }
@@ -227,7 +227,7 @@ func (s *svc) SubscribeEvents(id model.SessionID) (<-chan model.Event, error) {
 	return ses.events, nil
 }
 
-// SubscribePending 订阅会话的待审批队列
+// SubscribePending 订阅会话的待审批队列（已废弃，保留接口兼容）
 func (s *svc) SubscribePending(id model.SessionID) (<-chan model.PendingItem, error) {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
@@ -238,38 +238,19 @@ func (s *svc) SubscribePending(id model.SessionID) (<-chan model.PendingItem, er
 	return ses.pending, nil
 }
 
-// ApproveRequest 审批请求阶段并应用重写
-func (s *svc) ApproveRequest(itemID string, mutations rulespec.Rewrite) error {
-	s.mu.Lock()
-	for _, ses := range s.sessions {
-		if ses.mgr != nil {
-			ses.mgr.Approve(itemID, mutations)
-		}
-	}
-	s.mu.Unlock()
+// Note: 审批功能已移除，以下方法保留作为接口兼容，但不做实际操作
+
+// ApproveRequest 审批请求阶段（已废弃）
+func (s *svc) ApproveRequest(itemID string, mutations map[string]any) error {
 	return nil
 }
 
-// ApproveResponse 审批响应阶段并应用重写
-func (s *svc) ApproveResponse(itemID string, mutations rulespec.Rewrite) error {
-	s.mu.Lock()
-	for _, ses := range s.sessions {
-		if ses.mgr != nil {
-			ses.mgr.Approve(itemID, mutations)
-		}
-	}
-	s.mu.Unlock()
+// ApproveResponse 审批响应阶段（已废弃）
+func (s *svc) ApproveResponse(itemID string, mutations map[string]any) error {
 	return nil
 }
 
-// Reject 拒绝审批项
+// Reject 拒绝审批项（已废弃）
 func (s *svc) Reject(itemID string) error {
-	s.mu.Lock()
-	for _, ses := range s.sessions {
-		if ses.mgr != nil {
-			ses.mgr.Reject(itemID)
-		}
-	}
-	s.mu.Unlock()
 	return nil
 }

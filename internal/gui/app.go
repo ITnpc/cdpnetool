@@ -217,21 +217,21 @@ func (a *App) DisableInterception(sessionID string) OperationResult {
 	return OperationResult{Success: true}
 }
 
-// LoadRules 从 JSON 字符串加载规则到指定会话。
+// LoadRules 从 JSON 字符串加载规则配置到指定会话。
 func (a *App) LoadRules(sessionID string, rulesJSON string) OperationResult {
-	var rs rulespec.RuleSet
-	if err := json.Unmarshal([]byte(rulesJSON), &rs); err != nil {
+	var cfg rulespec.Config
+	if err := json.Unmarshal([]byte(rulesJSON), &cfg); err != nil {
 		a.log.Error("JSON 解析失败", "error", err)
 		return OperationResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
 	}
 
-	err := a.service.LoadRules(model.SessionID(sessionID), rs)
+	err := a.service.LoadRules(model.SessionID(sessionID), &cfg)
 	if err != nil {
 		a.log.Error("加载规则失败", "sessionID", sessionID, "error", err)
 		return OperationResult{Success: false, Error: err.Error()}
 	}
 
-	a.log.Info("规则加载成功", "sessionID", sessionID, "ruleCount", len(rs.Rules))
+	a.log.Info("规则加载成功", "sessionID", sessionID, "ruleCount", len(cfg.Rules))
 	return OperationResult{Success: true}
 }
 
@@ -294,9 +294,9 @@ func (a *App) subscribePending(sessionID model.SessionID) {
 	a.log.Debug("Pending 订阅已结束", "sessionID", sessionID)
 }
 
-// ApproveRequest 审批通过请求阶段，可选应用 mutations 修改。
+// ApproveRequest 审批通过请求阶段（已废弃）。
 func (a *App) ApproveRequest(itemID string, mutationsJSON string) OperationResult {
-	var mutations rulespec.Rewrite
+	var mutations map[string]any
 	if mutationsJSON != "" {
 		if err := json.Unmarshal([]byte(mutationsJSON), &mutations); err != nil {
 			a.log.Error("ApproveRequest JSON 解析失败", "itemID", itemID, "error", err)
@@ -312,9 +312,9 @@ func (a *App) ApproveRequest(itemID string, mutationsJSON string) OperationResul
 	return OperationResult{Success: true}
 }
 
-// ApproveResponse 审批通过响应阶段，可选应用 mutations 修改。
+// ApproveResponse 审批通过响应阶段（已废弃）。
 func (a *App) ApproveResponse(itemID string, mutationsJSON string) OperationResult {
-	var mutations rulespec.Rewrite
+	var mutations map[string]any
 	if mutationsJSON != "" {
 		if err := json.Unmarshal([]byte(mutationsJSON), &mutations); err != nil {
 			a.log.Error("ApproveResponse JSON 解析失败", "itemID", itemID, "error", err)
@@ -481,13 +481,13 @@ func (a *App) GetRuleSet(id uint) RuleSetResult {
 
 // SaveRuleSet 保存规则集（创建或更新），id 为 0 时创建新规则集。
 func (a *App) SaveRuleSet(id uint, name string, rulesJSON string) RuleSetResult {
-	var rs rulespec.RuleSet
-	if err := json.Unmarshal([]byte(rulesJSON), &rs); err != nil {
+	var cfg rulespec.Config
+	if err := json.Unmarshal([]byte(rulesJSON), &cfg); err != nil {
 		a.log.Error("保存规则集 JSON 解析失败", "error", err)
 		return RuleSetResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
 	}
 
-	ruleSet, err := a.ruleSetRepo.SaveFromRuleSet(id, name, &rs)
+	ruleSet, err := a.ruleSetRepo.SaveFromConfig(id, name, &cfg)
 	if err != nil {
 		a.log.Error("保存规则集失败", "id", id, "name", name, "error", err)
 		return RuleSetResult{Success: false, Error: err.Error()}
@@ -569,13 +569,13 @@ func (a *App) LoadActiveRuleSetToSession() OperationResult {
 		return OperationResult{Success: false, Error: "没有激活的规则集"}
 	}
 
-	rs, err := a.ruleSetRepo.ToRuleSet(ruleSet)
+	cfg, err := a.ruleSetRepo.ToConfig(ruleSet)
 	if err != nil {
 		a.log.Error("转换规则集失败", "id", ruleSet.ID, "error", err)
 		return OperationResult{Success: false, Error: err.Error()}
 	}
 
-	if err := a.service.LoadRules(a.currentSession, *rs); err != nil {
+	if err := a.service.LoadRules(a.currentSession, cfg); err != nil {
 		a.log.Error("加载规则到会话失败", "sessionID", a.currentSession, "error", err)
 		return OperationResult{Success: false, Error: err.Error()}
 	}

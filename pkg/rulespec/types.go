@@ -1,187 +1,228 @@
+// Package rulespec 定义规则配置的类型规范 (v2)
 package rulespec
 
-import "cdpnetool/pkg/model"
+// ==================== 配置结构 ====================
+
+// Config 配置文件根结构
+type Config struct {
+	ID          string         `json:"id"`                    // 配置唯一标识符
+	Name        string         `json:"name"`                  // 配置名称
+	Version     string         `json:"version"`               // 配置格式规范版本
+	Description string         `json:"description,omitempty"` // 配置描述
+	Settings    map[string]any `json:"settings,omitempty"`    // 预留设置项
+	Rules       []Rule         `json:"rules"`                 // 规则列表
+}
+
+// ==================== 规则结构 ====================
+
+// Stage 生命周期阶段
+type Stage string
+
+const (
+	StageRequest  Stage = "request"  // 请求阶段
+	StageResponse Stage = "response" // 响应阶段
+)
+
+// Rule 规则定义
+type Rule struct {
+	ID       string   `json:"id"`       // 规则唯一标识符
+	Name     string   `json:"name"`     // 规则名称
+	Enabled  bool     `json:"enabled"`  // 是否启用
+	Priority int      `json:"priority"` // 优先级，数值越大越先执行
+	Stage    Stage    `json:"stage"`    // 生命周期阶段
+	Match    Match    `json:"match"`    // 匹配规则
+	Actions  []Action `json:"actions"`  // 执行行为列表
+}
+
+// ==================== 匹配结构 ====================
+
+// Match 匹配规则
+type Match struct {
+	AllOf []Condition `json:"allOf,omitempty"` // AND 逻辑
+	AnyOf []Condition `json:"anyOf,omitempty"` // OR 逻辑
+}
 
 // ConditionType 条件类型
 type ConditionType string
 
-// ConditionMode 条件模式
-type ConditionMode string
-
-// ConditionOp 条件操作符
-type ConditionOp string
-
-// PauseStage 暂停阶段
-type PauseStage string
-
-// PauseDefaultActionType 暂停默认动作类型
-type PauseDefaultActionType string
-
-// RuleMode 规则模式
-type RuleMode string
-
-// JSONPatchOpType JSON补丁操作类型
-type JSONPatchOpType string
-
+// URL 条件类型
 const (
-	JSONPatchOpAdd     JSONPatchOpType = "add"     // 添加
-	JSONPatchOpRemove  JSONPatchOpType = "remove"  // 移除
-	JSONPatchOpReplace JSONPatchOpType = "replace" // 替换
-	JSONPatchOpMove    JSONPatchOpType = "move"    // 移动
-	JSONPatchOpCopy    JSONPatchOpType = "copy"    // 复制
-	JSONPatchOpTest    JSONPatchOpType = "test"    // 测试
+	ConditionURLEquals   ConditionType = "urlEquals"   // URL 精确匹配
+	ConditionURLPrefix   ConditionType = "urlPrefix"   // URL 前缀匹配
+	ConditionURLSuffix   ConditionType = "urlSuffix"   // URL 后缀匹配
+	ConditionURLContains ConditionType = "urlContains" // URL 包含匹配
+	ConditionURLRegex    ConditionType = "urlRegex"    // URL 正则匹配
 )
 
+// Method 和 ResourceType 条件类型
 const (
-	ConditionTypeURL         ConditionType = "url"          // URL
-	ConditionTypeMethod      ConditionType = "method"       // 方法
-	ConditionTypeHeader      ConditionType = "header"       // 头部
-	ConditionTypeQuery       ConditionType = "query"        // 查询
-	ConditionTypeCookie      ConditionType = "cookie"       // Cookie
-	ConditionTypeText        ConditionType = "text"         // 文本
-	ConditionTypeMIME        ConditionType = "mime"         // MIME
-	ConditionTypeSize        ConditionType = "size"         // 大小
-	ConditionTypeProbability ConditionType = "probability"  // 概率
-	ConditionTypeTimeWindow  ConditionType = "time_window"  // 时间窗口
-	ConditionTypeJSONPointer ConditionType = "json_pointer" // JSON指针
-	ConditionTypeStage       ConditionType = "stage"        // 阶段
+	ConditionMethod       ConditionType = "method"       // HTTP 方法
+	ConditionResourceType ConditionType = "resourceType" // 资源类型
 )
 
+// Header 条件类型
 const (
-	ConditionModePrefix ConditionMode = "prefix" // 前缀
-	ConditionModeRegex  ConditionMode = "regex"  // 正则
-	ConditionModeExact  ConditionMode = "exact"  // 精确
+	ConditionHeaderExists    ConditionType = "headerExists"    // Header 存在
+	ConditionHeaderNotExists ConditionType = "headerNotExists" // Header 不存在
+	ConditionHeaderEquals    ConditionType = "headerEquals"    // Header 精确匹配
+	ConditionHeaderContains  ConditionType = "headerContains"  // Header 包含
+	ConditionHeaderRegex     ConditionType = "headerRegex"     // Header 正则
 )
 
+// Query 条件类型
 const (
-	ConditionOpEquals   ConditionOp = "equals"   // 等于
-	ConditionOpContains ConditionOp = "contains" // 包含
-	ConditionOpRegex    ConditionOp = "regex"    // 正则
-	ConditionOpLT       ConditionOp = "lt"       // 小于
-	ConditionOpLTE      ConditionOp = "lte"      // 小于等于
-	ConditionOpGT       ConditionOp = "gt"       // 大于
-	ConditionOpGTE      ConditionOp = "gte"      // 大于等于
-	ConditionOpBetween  ConditionOp = "between"  // 区间
+	ConditionQueryExists    ConditionType = "queryExists"    // Query 存在
+	ConditionQueryNotExists ConditionType = "queryNotExists" // Query 不存在
+	ConditionQueryEquals    ConditionType = "queryEquals"    // Query 精确匹配
+	ConditionQueryContains  ConditionType = "queryContains"  // Query 包含
+	ConditionQueryRegex     ConditionType = "queryRegex"     // Query 正则
 )
 
+// Cookie 条件类型
 const (
-	PauseStageRequest  PauseStage = "request"  // 请求
-	PauseStageResponse PauseStage = "response" // 响应
+	ConditionCookieExists    ConditionType = "cookieExists"    // Cookie 存在
+	ConditionCookieNotExists ConditionType = "cookieNotExists" // Cookie 不存在
+	ConditionCookieEquals    ConditionType = "cookieEquals"    // Cookie 精确匹配
+	ConditionCookieContains  ConditionType = "cookieContains"  // Cookie 包含
+	ConditionCookieRegex     ConditionType = "cookieRegex"     // Cookie 正则
 )
 
+// Body 条件类型
 const (
-	PauseDefaultActionContinueOriginal PauseDefaultActionType = "continue_original" // 继续原始
-	PauseDefaultActionContinueMutated  PauseDefaultActionType = "continue_mutated"  // 继续变异
-	PauseDefaultActionFulfill          PauseDefaultActionType = "fulfill"           // 满足
-	PauseDefaultActionFail             PauseDefaultActionType = "fail"              // 失败
+	ConditionBodyContains ConditionType = "bodyContains" // Body 包含
+	ConditionBodyRegex    ConditionType = "bodyRegex"    // Body 正则
+	ConditionBodyJsonPath ConditionType = "bodyJsonPath" // JSON Path 匹配
 )
 
-const (
-	RuleModeShortCircuit RuleMode = "short_circuit" // 短路
-	RuleModeAggregate    RuleMode = "aggregate"     // 聚合
-)
-
-// RuleSet 规则集
-type RuleSet struct {
-	Version string `json:"version"`
-	Rules   []Rule `json:"rules"`
-}
-
-// Rule 规则
-type Rule struct {
-	ID       model.RuleID `json:"id"`
-	Name     string       `json:"name,omitempty"`
-	Priority int          `json:"priority"`
-	Mode     RuleMode     `json:"mode"`
-	Match    Match        `json:"match"`
-	Action   Action       `json:"action"`
-}
-
-// Match 匹配
-type Match struct {
-	AllOf  []Condition `json:"allOf"`
-	AnyOf  []Condition `json:"anyOf"`
-	NoneOf []Condition `json:"noneOf"`
-}
-
-// Condition 条件
+// Condition 条件定义
 type Condition struct {
-	Type    ConditionType `json:"type"`
-	Mode    ConditionMode `json:"mode"`
-	Pattern string        `json:"pattern"`
-	Values  []string      `json:"values"`
-	Key     string        `json:"key"`
-	Op      ConditionOp   `json:"op"`
-	Value   string        `json:"value"`
-	Pointer string        `json:"pointer"`
+	Type    ConditionType `json:"type"`              // 条件类型
+	Value   string        `json:"value,omitempty"`   // 匹配值 (url*, *Equals, *Contains, bodyContains)
+	Values  []string      `json:"values,omitempty"`  // 匹配值列表 (method, resourceType)
+	Pattern string        `json:"pattern,omitempty"` // 正则表达式 (*Regex)
+	Name    string        `json:"name,omitempty"`    // 键名 (header*, query*, cookie*)
+	Path    string        `json:"path,omitempty"`    // JSON Path (bodyJsonPath)
 }
 
-// Action 动作
+// ==================== 行为结构 ====================
+
+// ActionType 行为类型
+type ActionType string
+
+// 请求阶段行为类型
+const (
+	ActionSetUrl           ActionType = "setUrl"           // 设置请求 URL
+	ActionSetMethod        ActionType = "setMethod"        // 设置请求方法
+	ActionSetQueryParam    ActionType = "setQueryParam"    // 设置查询参数
+	ActionRemoveQueryParam ActionType = "removeQueryParam" // 移除查询参数
+	ActionSetCookie        ActionType = "setCookie"        // 设置 Cookie
+	ActionRemoveCookie     ActionType = "removeCookie"     // 移除 Cookie
+	ActionSetFormField     ActionType = "setFormField"     // 设置表单字段
+	ActionRemoveFormField  ActionType = "removeFormField"  // 移除表单字段
+	ActionBlock            ActionType = "block"            // 拦截请求
+)
+
+// 请求/响应阶段通用行为类型
+const (
+	ActionSetHeader       ActionType = "setHeader"       // 设置头部
+	ActionRemoveHeader    ActionType = "removeHeader"    // 移除头部
+	ActionSetBody         ActionType = "setBody"         // 替换 Body
+	ActionReplaceBodyText ActionType = "replaceBodyText" // 字符串替换 Body
+	ActionPatchBodyJson   ActionType = "patchBodyJson"   // JSON Patch 修改 Body
+)
+
+// 响应阶段行为类型
+const (
+	ActionSetStatus ActionType = "setStatus" // 设置响应状态码
+)
+
+// BodyEncoding Body 编码方式
+type BodyEncoding string
+
+const (
+	BodyEncodingText   BodyEncoding = "text"   // 文本编码
+	BodyEncodingBase64 BodyEncoding = "base64" // Base64 编码
+)
+
+// Action 行为定义
 type Action struct {
-	Rewrite  *Rewrite `json:"rewrite"`
-	Respond  *Respond `json:"respond"`
-	Fail     *Fail    `json:"fail"`
-	DelayMS  int      `json:"delayMS"`
-	DropRate float64  `json:"dropRate"`
-	Pause    *Pause   `json:"pause"`
+	Type         ActionType        `json:"type"`                   // 行为类型
+	Value        any               `json:"value,omitempty"`        // 目标值 (setUrl, setMethod, setStatus, setBody)
+	Name         string            `json:"name,omitempty"`         // 键名 (setHeader, removeHeader, setQueryParam, setCookie, setFormField)
+	Encoding     BodyEncoding      `json:"encoding,omitempty"`     // Body 编码方式 (setBody)
+	Search       string            `json:"search,omitempty"`       // 搜索内容 (replaceBodyText)
+	Replace      string            `json:"replace,omitempty"`      // 替换内容 (replaceBodyText)
+	ReplaceAll   bool              `json:"replaceAll,omitempty"`   // 是否全部替换 (replaceBodyText)
+	Patches      []JSONPatchOp     `json:"patches,omitempty"`      // JSON Patch 操作列表 (patchBodyJson)
+	StatusCode   int               `json:"statusCode,omitempty"`   // HTTP 状态码 (block)
+	Headers      map[string]string `json:"headers,omitempty"`      // 响应头 (block)
+	Body         string            `json:"body,omitempty"`         // 响应体 (block)
+	BodyEncoding BodyEncoding      `json:"bodyEncoding,omitempty"` // Body 编码方式 (block)
 }
 
-// Rewrite 重写
-type Rewrite struct {
-	URL     *string            `json:"url"`
-	Method  *string            `json:"method"`
-	Headers map[string]*string `json:"headers"`
-	Query   map[string]*string `json:"query"`
-	Cookies map[string]*string `json:"cookies"`
-	Body    *BodyPatch         `json:"body"`
-}
-
-// BodyPatch 体补丁
-type BodyPatch struct {
-	JSONPatch []JSONPatchOp   `json:"jsonPatch,omitempty"`
-	TextRegex *TextRegexPatch `json:"textRegex,omitempty"`
-	Base64    *Base64Patch    `json:"base64,omitempty"`
-}
-
-// JSONPatchOp JSON补丁操作
+// JSONPatchOp JSON Patch 操作
 type JSONPatchOp struct {
-	Op    JSONPatchOpType `json:"op"`
-	Path  string          `json:"path"`
-	From  string          `json:"from,omitempty"`
-	Value any             `json:"value,omitempty"`
+	Op    string `json:"op"`              // 操作类型: add, remove, replace, move, copy, test
+	Path  string `json:"path"`            // JSON 路径
+	Value any    `json:"value,omitempty"` // 值
+	From  string `json:"from,omitempty"`  // 源路径 (move, copy)
 }
 
-// TextRegexPatch 文本正则补丁
-type TextRegexPatch struct {
-	Pattern string `json:"pattern"`
-	Replace string `json:"replace"`
+// ==================== 辅助函数 ====================
+
+// IsTerminal 判断行为是否为终结性行为
+func (a *Action) IsTerminal() bool {
+	return a.Type == ActionBlock
 }
 
-// Base64Patch Base64补丁
-type Base64Patch struct {
-	Value string `json:"value"`
+// IsValidForStage 判断行为是否适用于指定阶段
+func (a *Action) IsValidForStage(stage Stage) bool {
+	switch a.Type {
+	// 仅请求阶段
+	case ActionSetUrl, ActionSetMethod, ActionSetQueryParam, ActionRemoveQueryParam,
+		ActionSetCookie, ActionRemoveCookie, ActionSetFormField, ActionRemoveFormField, ActionBlock:
+		return stage == StageRequest
+	// 仅响应阶段
+	case ActionSetStatus:
+		return stage == StageResponse
+	// 两阶段通用
+	case ActionSetHeader, ActionRemoveHeader, ActionSetBody, ActionReplaceBodyText, ActionPatchBodyJson:
+		return true
+	default:
+		return false
+	}
 }
 
-// Respond 响应
-type Respond struct {
-	Status  int               `json:"status"`
-	Headers map[string]string `json:"headers"`
-	Body    []byte            `json:"body"`
-	Base64  bool              `json:"base64"`
+// GetEncoding 获取 Body 编码方式，默认为 text
+func (a *Action) GetEncoding() BodyEncoding {
+	if a.Encoding == "" {
+		return BodyEncodingText
+	}
+	return a.Encoding
 }
 
-// Fail 失败
-type Fail struct {
-	Reason string `json:"reason"`
+// GetBodyEncoding 获取 block 行为的 Body 编码方式，默认为 text
+func (a *Action) GetBodyEncoding() BodyEncoding {
+	if a.BodyEncoding == "" {
+		return BodyEncodingText
+	}
+	return a.BodyEncoding
 }
 
-// Pause 暂停
-type Pause struct {
-	Stage         PauseStage `json:"stage"`
-	TimeoutMS     int        `json:"timeoutMS"`
-	DefaultAction struct {
-		Type   PauseDefaultActionType `json:"type"`
-		Status int                    `json:"status"`
-		Reason string                 `json:"reason"`
-	} `json:"defaultAction"`
-}
+// ==================== 资源类型常量 ====================
+
+// ResourceType 资源类型
+type ResourceType string
+
+const (
+	ResourceTypeDocument   ResourceType = "document"   // HTML 文档
+	ResourceTypeScript     ResourceType = "script"     // JavaScript
+	ResourceTypeStylesheet ResourceType = "stylesheet" // CSS
+	ResourceTypeImage      ResourceType = "image"      // 图片
+	ResourceTypeMedia      ResourceType = "media"      // 音视频
+	ResourceTypeFont       ResourceType = "font"       // 字体
+	ResourceTypeXHR        ResourceType = "xhr"        // XMLHttpRequest
+	ResourceTypeFetch      ResourceType = "fetch"      // Fetch API
+	ResourceTypeWebSocket  ResourceType = "websocket"  // WebSocket
+	ResourceTypeOther      ResourceType = "other"      // 其他
+)

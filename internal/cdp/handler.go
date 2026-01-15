@@ -2,12 +2,13 @@ package cdp
 
 import (
 	"context"
-	"math/rand"
 	"time"
 
 	"github.com/mafredri/cdp/protocol/fetch"
 
+	"cdpnetool/internal/rules"
 	"cdpnetool/pkg/model"
+	"cdpnetool/pkg/rulespec"
 )
 
 // handle 处理一次拦截事件并根据规则执行相应动作
@@ -20,10 +21,11 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 	defer cancel()
 	start := time.Now()
 
-	stage := "request"
+	// 判断阶段
+	stage := rulespec.StageRequest
 	statusCode := 0
 	if ev.ResponseStatusCode != nil {
-		stage = "response"
+		stage = rulespec.StageResponse
 		statusCode = *ev.ResponseStatusCode
 	}
 
@@ -33,80 +35,209 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 		Target:     ts.id,
 		URL:        ev.Request.URL,
 		Method:     ev.Request.Method,
-		Stage:      stage,
+		Stage:      string(stage),
 		StatusCode: statusCode,
 	})
 
 	m.log.Debug("开始处理拦截事件", "stage", stage, "url", ev.Request.URL, "method", ev.Request.Method)
 
-	res := m.decide(ts, ev, stage)
-	if res == nil || res.Action == nil {
-		m.applyContinue(ctx, ts, ev, stage)
-		m.log.Debug("拦截事件处理完成", "stage", stage, "duration", time.Since(start))
+	// 构建评估上下文（基于请求信息）
+	evalCtx := m.buildEvalContext(ts, ev)
+
+	// 评估匹配规则
+	if m.engine == nil {
+		m.executor.ContinueRequest(ctx, ts, ev)
+		return
+	}
+	matchedRules := m.engine.EvalForStage(evalCtx, stage)
+	if len(matchedRules) == 0 {
+		if stage == rulespec.StageRequest {
+			m.executor.ContinueRequest(ctx, ts, ev)
+		} else {
+			m.executor.ContinueResponse(ctx, ts, ev)
+		}
+		m.log.Debug("拦截事件处理完成，无匹配规则", "stage", stage, "duration", time.Since(start))
 		return
 	}
 
-	a := res.Action
-	// DropRate：按概率降级直接放行
-	if a.DropRate > 0 {
-		if rand.Float64() < a.DropRate {
-			m.applyContinue(ctx, ts, ev, stage)
-			m.sendEvent(model.Event{Type: "degraded", Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method, Stage: stage})
-			m.log.Warn("触发丢弃概率降级", "stage", stage)
+	// 执行所有匹配规则的行为（aggregate 模式）
+	if stage == rulespec.StageRequest {
+		m.executeRequestStage(ctx, ts, ev, matchedRules, start)
+	} else {
+		m.executeResponseStage(ctx, ts, ev, matchedRules, start)
+	}
+}
+
+// executeRequestStage 执行请求阶段的行为
+func (m *Manager) executeRequestStage(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, matchedRules []*rules.MatchedRule, start time.Time) {
+	var aggregatedMut *RequestMutation
+
+	for _, matched := range matchedRules {
+		rule := matched.Rule
+		if len(rule.Actions) == 0 {
+			continue
+		}
+
+		// 执行当前规则的所有行为
+		mut := m.executor.ExecuteRequestActions(rule.Actions, ev)
+		if mut == nil {
+			continue
+		}
+
+		// 检查是否是终结性行为（block）
+		if mut.Block != nil {
+			// 使用 ActionExecutor 的 ApplyRequestMutation 来应用 block
+			m.executor.ApplyRequestMutation(ctx, ts, ev, mut)
+			m.sendEvent(model.Event{
+				Type:   "blocked",
+				Rule:   (*model.RuleID)(&rule.ID),
+				Target: ts.id,
+				URL:    ev.Request.URL,
+				Method: ev.Request.Method,
+				Stage:  string(rulespec.StageRequest),
+			})
+			m.log.Info("请求被阻止", "rule", rule.ID, "url", ev.Request.URL)
 			return
+		}
+
+		// 聚合变更
+		if aggregatedMut == nil {
+			aggregatedMut = mut
+		} else {
+			mergeRequestMutation(aggregatedMut, mut)
 		}
 	}
 
-	// DelayMS：动作前注入固定延迟
-	if a.DelayMS > 0 {
-		time.Sleep(time.Duration(a.DelayMS) * time.Millisecond)
+	// 应用聚合后的变更
+	if aggregatedMut != nil && hasRequestMutation(aggregatedMut) {
+		m.executor.ApplyRequestMutation(ctx, ts, ev, aggregatedMut)
+		m.sendEvent(model.Event{
+			Type:   "mutated",
+			Target: ts.id,
+			URL:    ev.Request.URL,
+			Method: ev.Request.Method,
+			Stage:  string(rulespec.StageRequest),
+		})
+	} else {
+		m.executor.ContinueRequest(ctx, ts, ev)
+	}
+	m.log.Debug("请求阶段处理完成", "duration", time.Since(start))
+}
+
+// executeResponseStage 执行响应阶段的行为
+func (m *Manager) executeResponseStage(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, matchedRules []*rules.MatchedRule, start time.Time) {
+	// 获取响应体
+	responseBody, _ := m.executor.FetchResponseBody(ctx, ts, ev.RequestID)
+	var aggregatedMut *ResponseMutation
+
+	for _, matched := range matchedRules {
+		rule := matched.Rule
+		if len(rule.Actions) == 0 {
+			continue
+		}
+
+		// 执行当前规则的所有行为
+		mut := m.executor.ExecuteResponseActions(rule.Actions, ev, responseBody)
+		if mut == nil {
+			continue
+		}
+
+		// 聚合变更
+		if aggregatedMut == nil {
+			aggregatedMut = mut
+		} else {
+			mergeResponseMutation(aggregatedMut, mut)
+		}
+
+		// 更新 responseBody 供后续规则使用
+		if mut.Body != nil {
+			responseBody = *mut.Body
+		}
 	}
 
-	elapsed := time.Since(start)
-	if elapsed > time.Duration(to)*time.Millisecond {
-		m.applyContinue(ctx, ts, ev, stage)
-		m.sendEvent(model.Event{Type: "degraded", Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method, Stage: stage})
-		m.log.Warn("拦截处理超时自动降级", "stage", stage, "elapsed", elapsed, "timeout", to)
-		return
+	// 应用聚合后的变更
+	if aggregatedMut != nil && hasResponseMutation(aggregatedMut) {
+		// 确保 Body 是最新的
+		if aggregatedMut.Body == nil && responseBody != "" {
+			aggregatedMut.Body = &responseBody
+		}
+		m.executor.ApplyResponseMutation(ctx, ts, ev, aggregatedMut)
+		m.sendEvent(model.Event{
+			Type:       "mutated",
+			Target:     ts.id,
+			URL:        ev.Request.URL,
+			Method:     ev.Request.Method,
+			Stage:      string(rulespec.StageResponse),
+			StatusCode: getStatusCode(ev),
+		})
+	} else {
+		m.executor.ContinueResponse(ctx, ts, ev)
 	}
+	m.log.Debug("响应阶段处理完成", "duration", time.Since(start))
+}
 
-	// Pause：进入人工审批流程
-	if a.Pause != nil {
-		m.log.Info("应用暂停审批动作", "stage", stage)
-		m.applyPause(ctx, ts, ev, a.Pause, stage, res.RuleID)
-		return
+// mergeRequestMutation 合并请求变更
+func mergeRequestMutation(dst, src *RequestMutation) {
+	if src.URL != nil {
+		dst.URL = src.URL
 	}
-
-	// Fail：使请求失败
-	if a.Fail != nil {
-		m.log.Info("应用失败动作", "stage", stage)
-		m.applyFail(ctx, ts, ev, a.Fail)
-		m.sendEvent(model.Event{Type: "failed", Rule: res.RuleID, Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method, Stage: stage})
-		m.log.Debug("拦截事件处理完成", "stage", stage, "duration", time.Since(start))
-		return
+	if src.Method != nil {
+		dst.Method = src.Method
 	}
-
-	// Respond：直接返回自定义响应
-	if a.Respond != nil {
-		m.log.Info("应用自定义响应动作", "stage", stage)
-		m.applyRespond(ctx, ts, ev, a.Respond, stage)
-		m.sendEvent(model.Event{Type: "fulfilled", Rule: res.RuleID, Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method, Stage: stage, StatusCode: a.Respond.Status})
-		m.log.Debug("拦截事件处理完成", "stage", stage, "duration", time.Since(start))
-		return
+	for k, v := range src.Headers {
+		if dst.Headers == nil {
+			dst.Headers = make(map[string]string)
+		}
+		dst.Headers[k] = v
 	}
-
-	// Rewrite：重写请求/响应
-	if a.Rewrite != nil {
-		m.log.Info("应用请求响应重写动作", "stage", stage)
-		m.applyRewrite(ctx, ts, ev, a.Rewrite, stage)
-		m.sendEvent(model.Event{Type: "mutated", Rule: res.RuleID, Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method, Stage: stage, StatusCode: statusCode})
-		m.log.Debug("拦截事件处理完成", "stage", stage, "duration", time.Since(start))
-		return
+	for k, v := range src.Query {
+		if dst.Query == nil {
+			dst.Query = make(map[string]string)
+		}
+		dst.Query[k] = v
 	}
+	for k, v := range src.Cookies {
+		if dst.Cookies == nil {
+			dst.Cookies = make(map[string]string)
+		}
+		dst.Cookies[k] = v
+	}
+	dst.RemoveHeaders = append(dst.RemoveHeaders, src.RemoveHeaders...)
+	dst.RemoveQuery = append(dst.RemoveQuery, src.RemoveQuery...)
+	dst.RemoveCookies = append(dst.RemoveCookies, src.RemoveCookies...)
+	if src.Body != nil {
+		dst.Body = src.Body
+	}
+}
 
-	// 默认：直接放行
-	m.applyContinue(ctx, ts, ev, stage)
-	m.log.Debug("拦截事件处理完成", "stage", stage, "duration", time.Since(start))
+// mergeResponseMutation 合并响应变更
+func mergeResponseMutation(dst, src *ResponseMutation) {
+	if src.StatusCode != nil {
+		dst.StatusCode = src.StatusCode
+	}
+	for k, v := range src.Headers {
+		if dst.Headers == nil {
+			dst.Headers = make(map[string]string)
+		}
+		dst.Headers[k] = v
+	}
+	dst.RemoveHeaders = append(dst.RemoveHeaders, src.RemoveHeaders...)
+	if src.Body != nil {
+		dst.Body = src.Body
+	}
+}
+
+// hasRequestMutation 检查请求变更是否有效
+func hasRequestMutation(m *RequestMutation) bool {
+	return m.URL != nil || m.Method != nil ||
+		len(m.Headers) > 0 || len(m.Query) > 0 || len(m.Cookies) > 0 ||
+		len(m.RemoveHeaders) > 0 || len(m.RemoveQuery) > 0 || len(m.RemoveCookies) > 0 ||
+		m.Body != nil
+}
+
+// hasResponseMutation 检查响应变更是否有效
+func hasResponseMutation(m *ResponseMutation) bool {
+	return m.StatusCode != nil || len(m.Headers) > 0 || len(m.RemoveHeaders) > 0 || m.Body != nil
 }
 
 // dispatchPaused 根据并发配置调度单次拦截事件处理
@@ -147,13 +278,11 @@ func (m *Manager) consume(ts *targetSession) {
 
 // handleTargetStreamClosed 处理单个目标的拦截流终止
 func (m *Manager) handleTargetStreamClosed(ts *targetSession, err error) {
-	// 如果是由于显式 Disable 导致的中断，则只停止消费，不移除目标
 	if !m.isEnabled() {
 		m.log.Info("拦截已禁用，停止目标事件消费", "target", string(ts.id))
 		return
 	}
 
-	// 其他情况视为页面关闭或连接异常，自动移除该目标
 	m.log.Warn("拦截流被中断，自动移除目标", "target", string(ts.id), "error", err)
 
 	m.targetsMu.Lock()
@@ -170,10 +299,7 @@ func (m *Manager) degradeAndContinue(ts *targetSession, ev *fetch.RequestPausedR
 	m.log.Warn("执行降级策略：直接放行", "target", string(ts.id), "reason", reason, "requestID", ev.RequestID)
 	ctx, cancel := context.WithTimeout(ts.ctx, 1*time.Second)
 	defer cancel()
-	args := &fetch.ContinueRequestArgs{RequestID: ev.RequestID}
-	if err := ts.client.Fetch.ContinueRequest(ctx, args); err != nil {
-		m.log.Error("降级放行请求失败", "target", string(ts.id), "error", err)
-	}
+	m.executor.ContinueRequest(ctx, ts, ev)
 	m.sendEvent(model.Event{Type: "degraded", Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method})
 }
 
@@ -184,4 +310,12 @@ func (m *Manager) sendEvent(evt model.Event) {
 	case m.events <- evt:
 	default:
 	}
+}
+
+// getStatusCode 获取响应状态码
+func getStatusCode(ev *fetch.RequestPausedReply) int {
+	if ev.ResponseStatusCode != nil {
+		return *ev.ResponseStatusCode
+	}
+	return 0
 }

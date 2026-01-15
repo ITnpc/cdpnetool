@@ -130,27 +130,29 @@ func (r *RuleSetRepo) ParseRules(record *RuleSetRecord) ([]rulespec.Rule, error)
 	return rules, nil
 }
 
-// ToRuleSet 将记录转换为 RuleSet
-func (r *RuleSetRepo) ToRuleSet(record *RuleSetRecord) (*rulespec.RuleSet, error) {
+// ToConfig 将记录转换为 Config
+func (r *RuleSetRepo) ToConfig(record *RuleSetRecord) (*rulespec.Config, error) {
 	rules, err := r.ParseRules(record)
 	if err != nil {
 		return nil, err
 	}
 
-	return &rulespec.RuleSet{
+	return &rulespec.Config{
+		ID:      fmt.Sprintf("%d", record.ID),
+		Name:    record.Name,
 		Version: record.Version,
 		Rules:   rules,
 	}, nil
 }
 
-// SaveFromRuleSet 从 RuleSet 保存（更新或创建）
-func (r *RuleSetRepo) SaveFromRuleSet(id uint, name string, rs *rulespec.RuleSet) (*RuleSetRecord, error) {
+// SaveFromConfig 从 Config 保存（更新或创建）
+func (r *RuleSetRepo) SaveFromConfig(id uint, name string, cfg *rulespec.Config) (*RuleSetRecord, error) {
 	if id == 0 {
 		// 创建新记录
-		return r.Create(name, rs.Version, rs.Rules)
+		return r.Create(name, cfg.Version, cfg.Rules)
 	}
 	// 更新现有记录
-	if err := r.Update(id, name, rs.Version, rs.Rules); err != nil {
+	if err := r.Update(id, name, cfg.Version, cfg.Rules); err != nil {
 		return nil, err
 	}
 	return r.GetByID(id)

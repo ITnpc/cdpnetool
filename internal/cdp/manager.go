@@ -26,13 +26,11 @@ type Manager struct {
 	devtoolsURL       string
 	log               logger.Logger
 	engine            *rules.Engine
+	executor          *ActionExecutor
 	bodySizeThreshold int64
 	processTimeoutMS  int
 	pool              *workerPool
 	events            chan model.Event
-	pending           chan model.PendingItem
-	approvalsMu       sync.Mutex
-	approvals         map[string]chan *rulespec.Rewrite
 	targetsMu         sync.Mutex
 	targets           map[model.TargetID]*targetSession
 	stateMu           sync.RWMutex
@@ -53,14 +51,14 @@ func New(devtoolsURL string, events chan model.Event, pending chan model.Pending
 	if l == nil {
 		l = logger.NewNoopLogger()
 	}
-	return &Manager{
+	m := &Manager{
 		devtoolsURL: devtoolsURL,
 		log:         l,
 		events:      events,
-		pending:     pending,
-		approvals:   make(map[string]chan *rulespec.Rewrite),
 		targets:     make(map[model.TargetID]*targetSession),
 	}
+	m.executor = NewActionExecutor(m)
+	return m
 }
 
 // setEnabled 设置拦截开关
@@ -248,113 +246,107 @@ func (m *Manager) Disable() error {
 	return nil
 }
 
-// buildRuleContext 构造规则匹配上下文
-func (m *Manager) buildRuleContext(ts *targetSession, ev *fetch.RequestPausedReply, stage string) rules.Ctx {
+// buildEvalContext 构造规则匹配上下文
+func (m *Manager) buildEvalContext(ts *targetSession, ev *fetch.RequestPausedReply) *rules.EvalContext {
 	h := map[string]string{}
 	q := map[string]string{}
 	ck := map[string]string{}
 	var bodyText string
-	var ctype string
+	var resourceType string
 
-	if stage == "response" {
-		if len(ev.ResponseHeaders) > 0 {
-			for i := range ev.ResponseHeaders {
-				k := ev.ResponseHeaders[i].Name
-				v := ev.ResponseHeaders[i].Value
-				h[strings.ToLower(k)] = v
-				if strings.EqualFold(k, "set-cookie") {
-					name, val := parseSetCookie(v)
-					if name != "" {
-						ck[strings.ToLower(name)] = val
-					}
-				}
-				if strings.EqualFold(k, "content-type") {
-					ctype = v
-				}
-			}
+	// 获取资源类型
+	if ev.ResourceType != "" {
+		resourceType = string(ev.ResourceType)
+	}
+
+	// 解析请求头
+	_ = json.Unmarshal(ev.Request.Headers, &h)
+	if len(h) > 0 {
+		m2 := make(map[string]string, len(h))
+		for k, v := range h {
+			m2[strings.ToLower(k)] = v
 		}
-		var clen int64
-		if v, ok := h["content-length"]; ok {
-			if n, err := parseInt64(v); err == nil {
-				clen = n
-			}
-		}
-		if shouldGetBody(ctype, clen, m.bodySizeThreshold) {
-			ctx2, cancel := context.WithTimeout(ts.ctx, 500*time.Millisecond)
-			defer cancel()
-			rb, err := ts.client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: ev.RequestID})
-			if err == nil && rb != nil {
-				if rb.Base64Encoded {
-					if b, err := base64.StdEncoding.DecodeString(rb.Body); err == nil {
-						bodyText = string(b)
-					}
-				} else {
-					bodyText = rb.Body
+		h = m2
+	}
+
+	// 解析 Query 参数
+	if ev.Request.URL != "" {
+		if u, err := url.Parse(ev.Request.URL); err == nil {
+			for key, vals := range u.Query() {
+				if len(vals) > 0 {
+					q[strings.ToLower(key)] = vals[0]
 				}
 			}
-		}
-	} else {
-		_ = json.Unmarshal(ev.Request.Headers, &h)
-		if len(h) > 0 {
-			m2 := make(map[string]string, len(h))
-			for k, v := range h {
-				m2[strings.ToLower(k)] = v
-			}
-			h = m2
-		}
-		if ev.Request.URL != "" {
-			if u, err := url.Parse(ev.Request.URL); err == nil {
-				for key, vals := range u.Query() {
-					if len(vals) > 0 {
-						q[strings.ToLower(key)] = vals[0]
-					}
-				}
-			}
-		}
-		if v, ok := h["cookie"]; ok {
-			for name, val := range parseCookie(v) {
-				ck[strings.ToLower(name)] = val
-			}
-		}
-		if v, ok := h["content-type"]; ok {
-			ctype = v
-		}
-		// 优先使用 PostDataEntries（新 API）
-		if len(ev.Request.PostDataEntries) > 0 {
-			for _, entry := range ev.Request.PostDataEntries {
-				if entry.Bytes != nil {
-					bodyText += *entry.Bytes
-				}
-			}
-		} else if ev.Request.PostData != nil {
-			// 向下兼容，使用已弃用的 PostData
-			bodyText = *ev.Request.PostData
 		}
 	}
 
-	return rules.Ctx{
-		URL:         ev.Request.URL,
-		Method:      ev.Request.Method,
-		Headers:     h,
-		Query:       q,
-		Cookies:     ck,
-		Body:        bodyText,
-		ContentType: ctype,
-		Stage:       stage,
+	// 解析 Cookie
+	if v, ok := h["cookie"]; ok {
+		for name, val := range parseCookie(v) {
+			ck[strings.ToLower(name)] = val
+		}
+	}
+
+	// 获取请求体
+	if len(ev.Request.PostDataEntries) > 0 {
+		for _, entry := range ev.Request.PostDataEntries {
+			if entry.Bytes != nil {
+				bodyText += *entry.Bytes
+			}
+		}
+	} else if ev.Request.PostData != nil {
+		bodyText = *ev.Request.PostData
+	}
+
+	return &rules.EvalContext{
+		URL:          ev.Request.URL,
+		Method:       ev.Request.Method,
+		ResourceType: resourceType,
+		Headers:      h,
+		Query:        q,
+		Cookies:      ck,
+		Body:         bodyText,
 	}
 }
 
-// decide 构造规则上下文并进行匹配决策
-func (m *Manager) decide(ts *targetSession, ev *fetch.RequestPausedReply, stage string) *rules.Result {
-	if m.engine == nil {
-		return nil
+// getResponseBody 获取响应体内容
+func (m *Manager) getResponseBody(ts *targetSession, ev *fetch.RequestPausedReply) string {
+	var ctype string
+	var clen int64
+
+	if len(ev.ResponseHeaders) > 0 {
+		for i := range ev.ResponseHeaders {
+			k := ev.ResponseHeaders[i].Name
+			v := ev.ResponseHeaders[i].Value
+			if strings.EqualFold(k, "content-type") {
+				ctype = v
+			}
+			if strings.EqualFold(k, "content-length") {
+				if n, err := parseInt64(v); err == nil {
+					clen = n
+				}
+			}
+		}
 	}
-	ctx := m.buildRuleContext(ts, ev, stage)
-	res := m.engine.Eval(ctx)
-	if res == nil {
-		return nil
+
+	if !shouldGetBody(ctype, clen, m.bodySizeThreshold) {
+		return ""
 	}
-	return res
+
+	ctx2, cancel := context.WithTimeout(ts.ctx, 500*time.Millisecond)
+	defer cancel()
+	rb, err := ts.client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: ev.RequestID})
+	if err != nil || rb == nil {
+		return ""
+	}
+
+	if rb.Base64Encoded {
+		if b, err := base64.StdEncoding.DecodeString(rb.Body); err == nil {
+			return string(b)
+		}
+		return ""
+	}
+	return rb.Body
 }
 
 // selectTarget 根据传入的 targetID 或默认策略选择目标
@@ -420,48 +412,24 @@ func (m *Manager) ListTargets(ctx context.Context) ([]model.TargetInfo, error) {
 			Type:      string(targets[i].Type),
 			URL:       targets[i].URL,
 			Title:     targets[i].Title,
-			IsCurrent: m.targets[id] != nil, // 语义：当前会话是否已附加该目标
+			IsCurrent: m.targets[id] != nil,
 		}
 		out = append(out, info)
 	}
 	return out, nil
 }
 
-// SetRules 设置新的规则集并初始化引擎
-func (m *Manager) SetRules(rs rulespec.RuleSet) { m.engine = rules.New(rs) }
+// SetRules 设置新的规则配置并初始化引擎
+func (m *Manager) SetRules(cfg *rulespec.Config) {
+	m.engine = rules.New(cfg)
+}
 
-// UpdateRules 更新已有规则集到引擎
-func (m *Manager) UpdateRules(rs rulespec.RuleSet) {
+// UpdateRules 更新已有规则配置到引擎
+func (m *Manager) UpdateRules(cfg *rulespec.Config) {
 	if m.engine == nil {
-		m.engine = rules.New(rs)
+		m.engine = rules.New(cfg)
 	} else {
-		m.engine.Update(rs)
-	}
-}
-
-// Approve 根据审批ID应用外部提供的重写变更
-func (m *Manager) Approve(itemID string, mutations rulespec.Rewrite) {
-	m.approvalsMu.Lock()
-	ch, ok := m.approvals[itemID]
-	m.approvalsMu.Unlock()
-	if ok {
-		select {
-		case ch <- &mutations:
-		default:
-		}
-	}
-}
-
-// Reject 拒绝审批项，使请求失败
-func (m *Manager) Reject(itemID string) {
-	m.approvalsMu.Lock()
-	ch, ok := m.approvals[itemID]
-	m.approvalsMu.Unlock()
-	if ok {
-		select {
-		case ch <- nil: // nil 表示拒绝
-		default:
-		}
+		m.engine.Update(cfg)
 	}
 }
 
@@ -487,7 +455,16 @@ func (m *Manager) GetStats() model.EngineStats {
 	if m.engine == nil {
 		return model.EngineStats{ByRule: make(map[model.RuleID]int64)}
 	}
-	return m.engine.Stats()
+	stats := m.engine.GetStats()
+	byRule := make(map[model.RuleID]int64, len(stats.ByRule))
+	for k, v := range stats.ByRule {
+		byRule[model.RuleID(k)] = v
+	}
+	return model.EngineStats{
+		Total:   stats.Total,
+		Matched: stats.Matched,
+		ByRule:  byRule,
+	}
 }
 
 // GetPoolStats 返回并发工作池的运行统计
