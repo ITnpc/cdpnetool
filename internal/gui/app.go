@@ -477,14 +477,14 @@ func (a *App) GetRuleSet(id uint) RuleSetResult {
 }
 
 // SaveRuleSet 保存规则集（创建或更新），id 为 0 时创建新规则集。
-func (a *App) SaveRuleSet(id uint, name string, rulesJSON string) RuleSetResult {
+func (a *App) SaveRuleSet(id uint, name string, description string, rulesJSON string) RuleSetResult {
 	var cfg rulespec.Config
 	if err := json.Unmarshal([]byte(rulesJSON), &cfg); err != nil {
 		a.log.Error("保存规则集 JSON 解析失败", "error", err)
 		return RuleSetResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
 	}
 
-	ruleSet, err := a.ruleSetRepo.SaveFromConfig(id, name, &cfg)
+	ruleSet, err := a.ruleSetRepo.SaveFromConfig(id, name, description, &cfg)
 	if err != nil {
 		a.log.Error("保存规则集失败", "id", id, "name", name, "error", err)
 		return RuleSetResult{Success: false, Error: err.Error()}

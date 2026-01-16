@@ -64,6 +64,16 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 	ses.mgr = cdp.New(cfg.DevToolsURL, ses.events, s.log)
 	ses.mgr.SetConcurrency(cfg.Concurrency)
 	ses.mgr.SetRuntime(cfg.BodySizeThreshold, cfg.ProcessTimeoutMS)
+
+	// 验证连接是否有效：尝试获取目标列表
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, err := ses.mgr.ListTargets(ctx)
+	if err != nil {
+		s.log.Error("连接 DevTools 失败", "devtools", cfg.DevToolsURL, "error", err)
+		return "", errors.New("无法连接到 DevTools: " + err.Error())
+	}
+
 	s.sessions[id] = ses
 	s.log.Info("创建会话成功", "session", string(id), "devtools", cfg.DevToolsURL, "concurrency", cfg.Concurrency, "pending", cfg.PendingCapacity)
 	return id, nil

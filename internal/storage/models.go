@@ -21,13 +21,14 @@ const (
 
 // RuleSetRecord 规则集表
 type RuleSetRecord struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	Name      string    `gorm:"uniqueIndex;not null" json:"name"`
-	Version   string    `json:"version"`
-	RulesJSON string    `gorm:"type:text" json:"rulesJson"` // JSON 序列化的规则数组
-	IsActive  bool      `gorm:"default:false" json:"isActive"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	Name        string    `gorm:"uniqueIndex;not null" json:"name"`
+	Description string    `gorm:"type:text" json:"description"` // 配置描述
+	Version     string    `json:"version"`
+	RulesJSON   string    `gorm:"type:text" json:"rulesJson"` // JSON 序列化的规则数组
+	IsActive    bool      `gorm:"default:false" json:"isActive"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 // InterceptEventRecord 拦截事件历史表

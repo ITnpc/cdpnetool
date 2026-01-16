@@ -48,7 +48,7 @@ export function QueryEventHistory(arg1:string,arg2:string,arg3:string,arg4:strin
 
 export function RenameRuleSet(arg1:number,arg2:string):Promise<gui.OperationResult>;
 
-export function SaveRuleSet(arg1:number,arg2:string,arg3:string):Promise<gui.RuleSetResult>;
+export function SaveRuleSet(arg1:number,arg2:string,arg3:string,arg4:string):Promise<gui.RuleSetResult>;
 
 export function SetActiveRuleSet(arg1:number):Promise<gui.OperationResult>;
 

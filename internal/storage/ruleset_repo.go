@@ -22,19 +22,20 @@ func NewRuleSetRepo(db *DB) *RuleSetRepo {
 }
 
 // Create 创建新规则集
-func (r *RuleSetRepo) Create(name, version string, rules []rulespec.Rule) (*RuleSetRecord, error) {
+func (r *RuleSetRepo) Create(name, description, version string, rules []rulespec.Rule) (*RuleSetRecord, error) {
 	rulesJSON, err := json.Marshal(rules)
 	if err != nil {
 		return nil, fmt.Errorf("序列化规则失败: %w", err)
 	}
 
 	record := &RuleSetRecord{
-		Name:      name,
-		Version:   version,
-		RulesJSON: string(rulesJSON),
-		IsActive:  false,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Name:        name,
+		Description: description,
+		Version:     version,
+		RulesJSON:   string(rulesJSON),
+		IsActive:    false,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
 	if err := r.db.GormDB().Create(record).Error; err != nil {
@@ -44,17 +45,18 @@ func (r *RuleSetRepo) Create(name, version string, rules []rulespec.Rule) (*Rule
 }
 
 // Update 更新规则集
-func (r *RuleSetRepo) Update(id uint, name, version string, rules []rulespec.Rule) error {
+func (r *RuleSetRepo) Update(id uint, name, description, version string, rules []rulespec.Rule) error {
 	rulesJSON, err := json.Marshal(rules)
 	if err != nil {
 		return fmt.Errorf("序列化规则失败: %w", err)
 	}
 
 	return r.db.GormDB().Model(&RuleSetRecord{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"name":       name,
-		"version":    version,
-		"rules_json": string(rulesJSON),
-		"updated_at": time.Now(),
+		"name":        name,
+		"description": description,
+		"version":     version,
+		"rules_json":  string(rulesJSON),
+		"updated_at":  time.Now(),
 	}).Error
 }
 
@@ -146,13 +148,13 @@ func (r *RuleSetRepo) ToConfig(record *RuleSetRecord) (*rulespec.Config, error) 
 }
 
 // SaveFromConfig 从 Config 保存（更新或创建）
-func (r *RuleSetRepo) SaveFromConfig(id uint, name string, cfg *rulespec.Config) (*RuleSetRecord, error) {
+func (r *RuleSetRepo) SaveFromConfig(id uint, name, description string, cfg *rulespec.Config) (*RuleSetRecord, error) {
 	if id == 0 {
 		// 创建新记录
-		return r.Create(name, cfg.Version, cfg.Rules)
+		return r.Create(name, description, cfg.Version, cfg.Rules)
 	}
 	// 更新现有记录
-	if err := r.Update(id, name, cfg.Version, cfg.Rules); err != nil {
+	if err := r.Update(id, name, description, cfg.Version, cfg.Rules); err != nil {
 		return nil, err
 	}
 	return r.GetByID(id)

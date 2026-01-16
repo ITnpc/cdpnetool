@@ -33,6 +33,7 @@ import {
 interface RuleSetRecord {
   id: number
   name: string
+  description: string
   version: string
   rulesJson: string
   isActive: boolean
@@ -69,7 +70,7 @@ declare global {
           // 规则集持久化 API
           ListRuleSets: () => Promise<{ ruleSets: RuleSetRecord[]; success: boolean; error?: string }>
           GetRuleSet: (id: number) => Promise<{ ruleSet: RuleSetRecord; success: boolean; error?: string }>
-          SaveRuleSet: (id: number, name: string, rulesJson: string) => Promise<{ ruleSet: RuleSetRecord; success: boolean; error?: string }>
+          SaveRuleSet: (id: number, name: string, description: string, rulesJson: string) => Promise<{ ruleSet: RuleSetRecord; success: boolean; error?: string }>
           DeleteRuleSet: (id: number) => Promise<{ success: boolean; error?: string }>
           SetActiveRuleSet: (id: number) => Promise<{ success: boolean; error?: string }>
           GetActiveRuleSet: () => Promise<{ ruleSet: RuleSetRecord | null; success: boolean; error?: string }>
@@ -465,6 +466,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   const [ruleSets, setRuleSets] = useState<RuleSetRecord[]>([])
   const [currentRuleSetId, setCurrentRuleSetId] = useState<number>(0)
   const [currentRuleSetName, setCurrentRuleSetName] = useState<string>('默认配置')
+  const [currentDescription, setCurrentDescription] = useState<string>('')
   const [activeConfigId, setActiveConfigId] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [editingName, setEditingName] = useState<number | null>(null)
@@ -503,12 +505,9 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
       const result = await window.go.gui.App.ListRuleSets()
       if (result?.success) {
         setRuleSets(result.ruleSets || [])
-        // 查找激活的配置
-        const activeResult = await window.go.gui.App.GetActiveRuleSet()
-        if (activeResult?.success && activeResult.ruleSet) {
-          setActiveConfigId(activeResult.ruleSet.id)
-          loadRuleSetData(activeResult.ruleSet)
-        } else if (result.ruleSets && result.ruleSets.length > 0) {
+        // 加载第一个配置到编辑器，但不自动设置为激活状态
+        // 用户需要手动启用配置
+        if (result.ruleSets && result.ruleSets.length > 0) {
           loadRuleSetData(result.ruleSets[0])
         } else {
           setRuleSet(createEmptyRuleSet())
@@ -551,6 +550,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
         setRuleSet(createEmptyRuleSet())
         setCurrentRuleSetId(record.id)
         setCurrentRuleSetName(record.name)
+        setCurrentDescription(record.description || '')
         updateDirty(false)
         return
       }
@@ -558,9 +558,9 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
       const parsed = JSON.parse(record.rulesJson)
       // 兼容两种格式：数组或 { version, rules } 对象
       if (Array.isArray(parsed)) {
-        setRuleSet({ version: record.version || '2.0', rules: parsed })
+        setRuleSet({ version: record.version || '1.0', rules: parsed })
       } else if (parsed.rules && Array.isArray(parsed.rules)) {
-        setRuleSet({ version: parsed.version || '2.0', rules: parsed.rules })
+        setRuleSet({ version: parsed.version || '1.0', rules: parsed.rules })
       } else {
         console.error('Invalid rules format:', parsed)
         setRuleSet(createEmptyRuleSet())
@@ -568,6 +568,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
       
       setCurrentRuleSetId(record.id)
       setCurrentRuleSetName(record.name)
+      setCurrentDescription(record.description || '')
       updateDirty(false)
     } catch (e) {
       console.error('Parse rules error:', e)
@@ -592,8 +593,8 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   const handleCreateRuleSet = async () => {
     const name = `规则集 ${new Date().toLocaleString()}`
     try {
-      const emptyRuleSet = { version: '2.0', rules: [] }
-      const result = await window.go?.gui?.App?.SaveRuleSet(0, name, JSON.stringify(emptyRuleSet))
+      const emptyRuleSet = { version: '1.0', rules: [] }
+      const result = await window.go?.gui?.App?.SaveRuleSet(0, name, '', JSON.stringify(emptyRuleSet))
       if (result?.success && result.ruleSet) {
         await loadRuleSets()
         loadRuleSetData(result.ruleSet)
@@ -663,9 +664,23 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
       }
       
       try {
-        // 加载规则到会话
-        const rulesJson = config.rulesJson || JSON.stringify({ version: '2.0', rules: [] })
-        const loadResult = await window.go?.gui?.App?.LoadRules(sessionId!, rulesJson)
+        // 加载规则到会话 - 需要确保是完整的 Config 格式
+        let configJson: string
+        if (config.rulesJson) {
+          const parsed = JSON.parse(config.rulesJson)
+          if (Array.isArray(parsed)) {
+            // 如果是数组格式，包装成完整的 Config
+            configJson = JSON.stringify({ version: config.version || '1.0', rules: parsed })
+          } else if (parsed.version && parsed.rules) {
+            // 已经是完整格式
+            configJson = config.rulesJson
+          } else {
+            configJson = JSON.stringify({ version: '1.0', rules: [] })
+          }
+        } else {
+          configJson = JSON.stringify({ version: '1.0', rules: [] })
+        }
+        const loadResult = await window.go?.gui?.App?.LoadRules(sessionId!, configJson)
         if (!loadResult?.success) {
           toast({ variant: 'destructive', title: '加载规则失败', description: loadResult?.error })
           return
@@ -737,6 +752,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
       const saveResult = await window.go?.gui?.App?.SaveRuleSet(
         currentRuleSetId,
         currentRuleSetName,
+        currentDescription,
         rulesJson
       )
       
@@ -907,15 +923,27 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
           {/* 右侧配置详情 */}
           <div className="flex-1 flex flex-col min-h-0 p-4">
             {/* 配置信息栏 */}
-            <div className="flex items-center gap-4 mb-4 pb-3 border-b shrink-0">
+            <div className="flex flex-wrap items-center gap-4 mb-4 pb-3 border-b shrink-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">配置名称:</span>
+                <span className="text-sm text-muted-foreground whitespace-nowrap">配置名称:</span>
                 <Input
                   value={currentRuleSetName}
                   onChange={(e) => {
                     setCurrentRuleSetName(e.target.value)
                     updateDirty(true)
                   }}
+                  className="w-40 h-8"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground whitespace-nowrap">描述:</span>
+                <Input
+                  value={currentDescription}
+                  onChange={(e) => {
+                    setCurrentDescription(e.target.value)
+                    updateDirty(true)
+                  }}
+                  placeholder="配置描述（可选）"
                   className="w-48 h-8"
                 />
                 {isDirty && <span className="w-2 h-2 rounded-full bg-primary animate-pulse" title="有未保存更改" />}

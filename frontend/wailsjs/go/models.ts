@@ -384,6 +384,7 @@ export namespace storage {
 	export class RuleSetRecord {
 	    id: number;
 	    name: string;
+	    description: string;
 	    version: string;
 	    rulesJson: string;
 	    isActive: boolean;
@@ -400,6 +401,7 @@ export namespace storage {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
+	        this.description = source["description"];
 	        this.version = source["version"];
 	        this.rulesJson = source["rulesJson"];
 	        this.isActive = source["isActive"];

@@ -350,7 +350,7 @@ export function createEmptyRule(stage: Stage = 'request'): Rule {
 // 创建空规则集
 export function createEmptyRuleSet(): RuleSet {
   return {
-    version: '2.0',
+    version: '1.0',
     rules: []
   }
 }
@@ -360,7 +360,7 @@ export function createEmptyConfig(): Config {
   return {
     id: `config_${Date.now()}`,
     name: '新配置',
-    version: '2.0',
+    version: '1.0',
     rules: []
   }
 }

@@ -94,8 +94,8 @@ export function RenameRuleSet(arg1, arg2) {
   return window['go']['gui']['App']['RenameRuleSet'](arg1, arg2);
 }
 
-export function SaveRuleSet(arg1, arg2, arg3) {
-  return window['go']['gui']['App']['SaveRuleSet'](arg1, arg2, arg3);
+export function SaveRuleSet(arg1, arg2, arg3, arg4) {
+  return window['go']['gui']['App']['SaveRuleSet'](arg1, arg2, arg3, arg4);
 }
 
 export function SetActiveRuleSet(arg1) {
