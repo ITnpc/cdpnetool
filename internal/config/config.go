@@ -5,7 +5,7 @@ type Config struct {
 	Version string `yaml:"version"`
 
 	Sqlite struct {
-		Dsn    string `yaml:"dsn"`
+		Db     string `yaml:"db"`
 		Prefix string `yaml:"prefix"`
 	} `yaml:"sqlite"`
 
@@ -20,10 +20,10 @@ func NewConfig() *Config {
 	return &Config{
 		Version: "1.0.0",
 		Sqlite: struct {
-			Dsn    string `yaml:"dsn"`
+			Db     string `yaml:"db"`
 			Prefix string `yaml:"prefix"`
 		}{
-			Dsn:    "db.sqlite3",
+			Db:     "data.db",
 			Prefix: "cdpnetool_",
 		},
 		Log: struct {

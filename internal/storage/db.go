@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"cdpnetool/internal/config"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -8,6 +9,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 )
 
 // DB 数据库连接管理器
@@ -16,8 +18,8 @@ type DB struct {
 }
 
 // NewDB 创建新的数据库连接实例并执行迁移
-func NewDB() (*DB, error) {
-	dbPath, err := getDBPath()
+func NewDB(cfg *config.Config, l logger.Interface) (*DB, error) {
+	dbPath, err := getDBPath(cfg.Sqlite.Db)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +31,11 @@ func NewDB() (*DB, error) {
 
 	// 打开数据库连接
 	gormDB, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
+		Logger: l,
+		NamingStrategy: schema.NamingStrategy{
+			TablePrefix:   cfg.Sqlite.Prefix,
+			SingularTable: true,
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -63,7 +69,7 @@ func (d *DB) Close() error {
 }
 
 // getDBPath 获取跨平台的数据库文件路径
-func getDBPath() (string, error) {
+func getDBPath(dbName string) (string, error) {
 	var baseDir string
 
 	switch runtime.GOOS {
@@ -92,7 +98,7 @@ func getDBPath() (string, error) {
 		}
 	}
 
-	return filepath.Join(baseDir, "cdpnetool", "data.db"), nil
+	return filepath.Join(baseDir, "cdpnetool", dbName), nil
 }
 
 // autoMigrate 自动迁移所有模型
@@ -102,9 +108,4 @@ func (d *DB) autoMigrate() error {
 		&ConfigRecord{},
 		&InterceptEventRecord{},
 	)
-}
-
-// GetDBPath 导出获取数据库路径的方法（用于调试）
-func GetDBPath() (string, error) {
-	return getDBPath()
 }

@@ -21,6 +21,7 @@ import (
 // App 是暴露给前端的 Wails 方法集合，负责管理会话、浏览器、配置和事件。
 type App struct {
 	ctx            context.Context
+	cfg            *config.Config
 	log            logger.Logger
 	service        api.Service
 	currentSession model.SessionID
@@ -38,6 +39,7 @@ func NewApp() *App {
 	log := logger.NewZeroLogger(cfg)
 	log.Debug("创建 App 实例")
 	return &App{
+		cfg:     cfg,
 		log:     log,
 		service: api.NewService(log),
 	}
@@ -49,7 +51,8 @@ func (a *App) Startup(ctx context.Context) {
 	a.log.Info("应用启动")
 
 	// 初始化数据库
-	db, err := storage.NewDB()
+	gormLogger := storage.NewGormLogger(a.log)
+	db, err := storage.NewDB(a.cfg, gormLogger)
 	if err != nil {
 		a.log.Err(err, "数据库初始化失败")
 		return
