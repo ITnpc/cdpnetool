@@ -278,12 +278,22 @@ function App() {
     // @ts-ignore
     if (window.runtime?.EventsOn) {
       // @ts-ignore
-      window.runtime.EventsOn('intercept-event', (event: InterceptEvent) => {
+      const unsubscribe = window.runtime.EventsOn('intercept-event', (event: InterceptEvent) => {
+        console.log('[Events] 收到拦截事件:', event)
         // 事件由 store 处理，自动分发到匹配/未匹配列表
         addInterceptEvent(event)
       })
+      console.log('[Events] 已订阅 intercept-event 事件')
+      
+      // 清理函数：在组件卸载或依赖变化时取消订阅
+      return () => {
+        console.log('[Events] 取消订阅 intercept-event 事件')
+        if (unsubscribe) {
+          unsubscribe()
+        }
+      }
     }
-  }, [addInterceptEvent])
+  }, [])
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">

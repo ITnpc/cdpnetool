@@ -73,23 +73,41 @@ export const useSessionStore = create<SessionState>((set) => ({
   
   // 添加事件（根据 isMatched 分开存储）
   addInterceptEvent: (event) => set((state) => {
+    console.log('[Store] 处理拦截事件:', event)
+    
     if (event.isMatched && event.matched) {
+      console.log('[Store] 匹配事件 matched 对象:', event.matched)
+      console.log('[Store] matched.networkEvent:', event.matched.networkEvent)
+      
+      // 处理后端数据结构：检查是否有 networkEvent 层
+      const networkEvent = event.matched.networkEvent || event.matched
+      
       const eventWithId: MatchedEventWithId = {
         ...event.matched,
-        id: generateEventId(event.matched.networkEvent.timestamp),
+        networkEvent: networkEvent,
+        id: generateEventId(networkEvent.timestamp),
       }
+      console.log('[Store] 生成匹配事件 ID:', eventWithId.id)
       return {
         matchedEvents: [eventWithId, ...state.matchedEvents].slice(0, 200) // 保留最新 200 条
       }
     } else if (!event.isMatched && event.unmatched) {
+      console.log('[Store] 未匹配事件 unmatched 对象:', event.unmatched)
+      
+      // 处理后端数据结构
+      const networkEvent = event.unmatched.networkEvent || event.unmatched
+      
       const eventWithId: UnmatchedEventWithId = {
         ...event.unmatched,
-        id: generateEventId(event.unmatched.networkEvent.timestamp),
+        networkEvent: networkEvent,
+        id: generateEventId(networkEvent.timestamp),
       }
+      console.log('[Store] 生成未匹配事件 ID:', eventWithId.id)
       return {
         unmatchedEvents: [eventWithId, ...state.unmatchedEvents].slice(0, 100) // 保留最新 100 条
       }
     }
+    console.log('[Store] 事件数据格式不正确，忽略')
     return {}
   }),
   
