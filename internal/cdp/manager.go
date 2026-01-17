@@ -106,7 +106,7 @@ func (m *Manager) AttachTarget(target model.TargetID) error {
 	conn, err := rpcc.DialContext(ctx, selected.WebSocketDebuggerURL)
 	if err != nil {
 		cancel()
-		m.log.Error("连接浏览器 DevTools 失败", "error", err)
+		m.log.Err(err, "连接浏览器 DevTools 失败")
 		return err
 	}
 
@@ -125,7 +125,7 @@ func (m *Manager) AttachTarget(target model.TargetID) error {
 	// 如果会话已经启用拦截，则对新目标立即启用
 	if m.isEnabled() {
 		if err := m.enableTarget(ts); err != nil {
-			m.log.Error("为新目标启用拦截失败", "target", string(ts.id), "error", err)
+			m.log.Err(err, "为新目标启用拦截失败", "target", string(ts.id))
 		}
 	}
 
@@ -185,7 +185,7 @@ func (m *Manager) Enable() error {
 
 	for id, ts := range m.targets {
 		if err := m.enableTarget(ts); err != nil {
-			m.log.Error("为目标启用拦截失败", "target", string(id), "error", err)
+			m.log.Err(err, "为目标启用拦截失败", "target", string(id))
 		}
 	}
 
@@ -239,7 +239,7 @@ func (m *Manager) Disable() error {
 			continue
 		}
 		if err := ts.client.Fetch.Disable(ts.ctx); err != nil {
-			m.log.Error("停用目标拦截失败", "target", string(id), "error", err)
+			m.log.Err(err, "停用目标拦截失败", "target", string(id))
 		}
 	}
 
@@ -354,7 +354,7 @@ func (m *Manager) selectTarget(ctx context.Context, target model.TargetID) (*dev
 	dt := devtool.New(m.devtoolsURL)
 	targets, err := dt.List(ctx)
 	if err != nil {
-		m.log.Error("获取浏览器目标列表失败", "error", err)
+		m.log.Err(err, "获取浏览器目标列表失败")
 		return nil, err
 	}
 	if len(targets) == 0 {

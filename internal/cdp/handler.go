@@ -258,7 +258,7 @@ func (m *Manager) dispatchPaused(ts *targetSession, ev *fetch.RequestPausedReply
 func (m *Manager) consume(ts *targetSession) {
 	rp, err := ts.client.Fetch.RequestPaused(ts.ctx)
 	if err != nil {
-		m.log.Error("订阅拦截事件流失败", "target", string(ts.id), "error", err)
+		m.log.Err(err, "订阅拦截事件流失败", "target", string(ts.id))
 		m.handleTargetStreamClosed(ts, err)
 		return
 	}
@@ -268,7 +268,7 @@ func (m *Manager) consume(ts *targetSession) {
 	for {
 		ev, err := rp.Recv()
 		if err != nil {
-			m.log.Error("接收拦截事件失败", "target", string(ts.id), "error", err)
+			m.log.Err(err, "接收拦截事件失败", "target", string(ts.id))
 			m.handleTargetStreamClosed(ts, err)
 			return
 		}

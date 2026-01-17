@@ -6,7 +6,9 @@ require github.com/mafredri/cdp v0.35.0
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/rs/zerolog v1.34.0
 	github.com/wailsapp/wails/v2 v2.11.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.1
 )

@@ -70,7 +70,7 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 	defer cancel()
 	_, err := ses.mgr.ListTargets(ctx)
 	if err != nil {
-		s.log.Error("连接 DevTools 失败", "devtools", cfg.DevToolsURL, "error", err)
+		s.log.Err(err, "连接 DevTools 失败", "devtools", cfg.DevToolsURL)
 		return "", errors.New("无法连接到 DevTools: " + err.Error())
 	}
 
@@ -116,7 +116,7 @@ func (s *svc) AttachTarget(id model.SessionID, target model.TargetID) error {
 	if err == nil {
 		s.log.Info("附加浏览器目标成功", "session", string(id), "target", string(target))
 	} else {
-		s.log.Error("附加浏览器目标失败", "session", string(id), "error", err)
+		s.log.Err(err, "附加浏览器目标失败", "session", string(id))
 	}
 	return err
 }
@@ -168,7 +168,7 @@ func (s *svc) EnableInterception(id model.SessionID) error {
 	if err == nil {
 		s.log.Info("启用会话拦截成功", "session", string(id))
 	} else {
-		s.log.Error("启用会话拦截失败", "session", string(id), "error", err)
+		s.log.Err(err, "启用会话拦截失败", "session", string(id))
 	}
 	return err
 }
@@ -188,7 +188,7 @@ func (s *svc) DisableInterception(id model.SessionID) error {
 	if err == nil {
 		s.log.Info("停用会话拦截成功", "session", string(id))
 	} else {
-		s.log.Error("停用会话拦截失败", "session", string(id), "error", err)
+		s.log.Err(err, "停用会话拦截失败", "session", string(id))
 	}
 	return err
 }
