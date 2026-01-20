@@ -9,19 +9,20 @@ import (
 	"cdpnetool/internal/logger"
 )
 
-// Pool 并发工作池，用于限制任务的并发处理数量
+// Pool 并发工作池，通过信号量控制活跃协程数，并提供阻塞/丢弃机制的任务队列
 type Pool struct {
-	sem         chan struct{}
-	queue       chan func()
-	queueCap    int
-	log         logger.Logger
-	totalSubmit int64
-	totalDrop   int64
-	mu          sync.Mutex
-	stopMonitor chan struct{}
+	sem         chan struct{} // 信号量通道，容量即为最大并发数
+	queue       chan func()   // 任务缓冲队列
+	queueCap    int           // 队列最大容量
+	log         logger.Logger // 日志接口
+	totalSubmit int64         // 累计提交任务数
+	totalDrop   int64         // 累计丢弃任务数
+	mu          sync.Mutex    // 保护统计字段的互斥锁
+	stopMonitor chan struct{} // 停止监控协程的信号通道
 }
 
-// New 创建工作池，size 为 0 表示无限制，queueCap 为任务排队队列容量
+// New 创建并发工作池实例
+// size: 最大并发协程数；queueCap: 缓冲队列容量（若为0则默认为 size * 8）
 func New(size int, queueCap int) *Pool {
 	if size <= 0 {
 		return &Pool{}
@@ -43,11 +44,12 @@ func (p *Pool) SetLogger(l logger.Logger) {
 	p.log = l
 }
 
-// Start 启动工作池，创建固定数量 of worker 协程
+// Start 启动工作池，创建固定数量的 worker 协程并开启状态监控
 func (p *Pool) Start(ctx context.Context) {
 	if p.sem == nil {
 		return
 	}
+	// 启动 worker 协程群
 	for i := 0; i < cap(p.sem); i++ {
 		go p.worker(ctx)
 	}
@@ -97,7 +99,9 @@ func (p *Pool) worker(ctx context.Context) {
 	}
 }
 
-// Submit 提交任务到工作池，返回是否成功入队
+// Submit 提交任务到工作池
+// 如果池未启用限制，则直接启动新协程执行
+// 如果队列已满，则增加丢弃计数并返回 false
 func (p *Pool) Submit(fn func()) bool {
 	if p.sem == nil {
 		go fn()

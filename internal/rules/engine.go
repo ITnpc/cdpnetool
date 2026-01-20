@@ -21,7 +21,7 @@ type Engine struct {
 	cache   *regexutil.Cache
 }
 
-// New 创建规则引擎
+// New 创建规则引擎实例，并初始化正则缓存
 func New(config *rulespec.Config) *Engine {
 	return &Engine{
 		config: config,
@@ -30,14 +30,14 @@ func New(config *rulespec.Config) *Engine {
 	}
 }
 
-// Update 更新配置
+// Update 线程安全地更新规则配置
 func (e *Engine) Update(config *rulespec.Config) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.config = config
 }
 
-// GetConfig 获取当前配置
+// GetConfig 线程安全地获取当前生效的配置
 func (e *Engine) GetConfig() *rulespec.Config {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -60,7 +60,8 @@ type MatchedRule struct {
 	Rule *rulespec.Rule
 }
 
-// EvalForStage 评估指定阶段的匹配规则，返回按优先级排序的规则列表
+// EvalForStage 评估指定阶段（请求或响应）的匹配规则
+// 返回按优先级（Priority）从大到小排序的匹配规则列表
 func (e *Engine) EvalForStage(ctx *EvalContext, stage rulespec.Stage) []*MatchedRule {
 	e.mu.Lock()
 	e.total++
@@ -232,7 +233,7 @@ func (e *Engine) evalCondition(ctx *EvalContext, c *rulespec.Condition) bool {
 	}
 }
 
-// getHeader 获取Header（不区分大小写）
+// getHeader 获取 HTTP 头部值（支持不区分大小写的键名匹配）
 func (e *Engine) getHeader(headers map[string]string, name string) (string, bool) {
 	// 先尝试精确匹配
 	if v, ok := headers[name]; ok {
