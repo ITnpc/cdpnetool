@@ -1,4 +1,4 @@
-package model
+package domain
 
 // SessionID 会话ID
 type SessionID string

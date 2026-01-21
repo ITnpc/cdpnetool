@@ -8,7 +8,7 @@ import (
 	"cdpnetool/internal/storage/db"
 	"cdpnetool/internal/storage/model"
 	"cdpnetool/internal/storage/repo"
-	pkgmodel "cdpnetool/pkg/model"
+	"cdpnetool/pkg/domain"
 )
 
 // setupEventTestDB 创建用于 EventRepo 测试的内存数据库。
@@ -43,15 +43,15 @@ func TestEventRepo_AsyncWrite(t *testing.T) {
 
 	// 创建多个测试事件
 	for i := 0; i < 10; i++ {
-		evt := &pkgmodel.MatchedEvent{
-			NetworkEvent: pkgmodel.NetworkEvent{
+		evt := &domain.MatchedEvent{
+			NetworkEvent: domain.NetworkEvent{
 				Session: "test-session",
 				Target:  "test-target",
-				Request: pkgmodel.RequestInfo{
+				Request: domain.RequestInfo{
 					URL:    "http://example.com",
 					Method: "GET",
 				},
-				Response: pkgmodel.ResponseInfo{
+				Response: domain.ResponseInfo{
 					StatusCode: 200,
 				},
 				FinalResult: "passed",
@@ -88,30 +88,30 @@ func TestEventRepo_QueryWithFilters(t *testing.T) {
 	defer r.Stop()
 
 	// 插入不同类型的事件
-	events := []*pkgmodel.MatchedEvent{
+	events := []*domain.MatchedEvent{
 		{
-			NetworkEvent: pkgmodel.NetworkEvent{
+			NetworkEvent: domain.NetworkEvent{
 				Session:     "s1",
-				Request:     pkgmodel.RequestInfo{URL: "http://a.com", Method: "GET"},
-				Response:    pkgmodel.ResponseInfo{StatusCode: 200},
+				Request:     domain.RequestInfo{URL: "http://a.com", Method: "GET"},
+				Response:    domain.ResponseInfo{StatusCode: 200},
 				FinalResult: "passed",
 				Timestamp:   1000,
 			},
 		},
 		{
-			NetworkEvent: pkgmodel.NetworkEvent{
+			NetworkEvent: domain.NetworkEvent{
 				Session:     "s1",
-				Request:     pkgmodel.RequestInfo{URL: "http://b.com", Method: "POST"},
-				Response:    pkgmodel.ResponseInfo{StatusCode: 403},
+				Request:     domain.RequestInfo{URL: "http://b.com", Method: "POST"},
+				Response:    domain.ResponseInfo{StatusCode: 403},
 				FinalResult: "blocked",
 				Timestamp:   2000,
 			},
 		},
 		{
-			NetworkEvent: pkgmodel.NetworkEvent{
+			NetworkEvent: domain.NetworkEvent{
 				Session:     "s2",
-				Request:     pkgmodel.RequestInfo{URL: "http://c.com", Method: "GET"},
-				Response:    pkgmodel.ResponseInfo{StatusCode: 200},
+				Request:     domain.RequestInfo{URL: "http://c.com", Method: "GET"},
+				Response:    domain.ResponseInfo{StatusCode: 200},
 				FinalResult: "modified",
 				Timestamp:   3000,
 			},

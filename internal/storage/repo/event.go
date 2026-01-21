@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"cdpnetool/internal/logger"
-	dbmodel "cdpnetool/internal/storage/model"
-	pkgmodel "cdpnetool/pkg/model"
+	"cdpnetool/internal/storage/model"
+	"cdpnetool/pkg/domain"
 
 	"gorm.io/gorm"
 )
@@ -30,10 +30,10 @@ func DefaultEventRepoOptions() EventRepoOptions {
 
 // EventRepo 事件仓库（只存储匹配事件到数据库）
 type EventRepo struct {
-	BaseRepository[dbmodel.MatchedEventRecord]
+	BaseRepository[model.MatchedEventRecord]
 	log      logger.Logger
 	opts     EventRepoOptions
-	buffer   []dbmodel.MatchedEventRecord
+	buffer   []model.MatchedEventRecord
 	bufferMu sync.Mutex
 	flushCh  chan struct{}
 	stopCh   chan struct{}
@@ -48,10 +48,10 @@ func NewEventRepo(db *gorm.DB, log logger.Logger, opts ...EventRepoOptions) *Eve
 	}
 
 	r := &EventRepo{
-		BaseRepository: *NewBaseRepository[dbmodel.MatchedEventRecord](db),
+		BaseRepository: *NewBaseRepository[model.MatchedEventRecord](db),
 		log:            log,
 		opts:           opt,
-		buffer:         make([]dbmodel.MatchedEventRecord, 0, opt.BatchSize),
+		buffer:         make([]model.MatchedEventRecord, 0, opt.BatchSize),
 		flushCh:        make(chan struct{}, 1),
 		stopCh:         make(chan struct{}),
 	}
@@ -89,7 +89,7 @@ func (r *EventRepo) flush() {
 		return
 	}
 	toWrite := r.buffer
-	r.buffer = make([]dbmodel.MatchedEventRecord, 0, r.opts.BatchSize)
+	r.buffer = make([]model.MatchedEventRecord, 0, r.opts.BatchSize)
 	r.bufferMu.Unlock()
 
 	// 批量插入
@@ -105,7 +105,7 @@ func (r *EventRepo) Stop() {
 }
 
 // RecordMatched 记录匹配事件（异步写入数据库）
-func (r *EventRepo) RecordMatched(evt *pkgmodel.MatchedEvent) {
+func (r *EventRepo) RecordMatched(evt *domain.MatchedEvent) {
 	r.bufferMu.Lock()
 	// 容量保护：如果缓冲区已满，丢弃新事件并记录警告
 	if len(r.buffer) >= r.opts.MaxBufferSize {
@@ -120,7 +120,7 @@ func (r *EventRepo) RecordMatched(evt *pkgmodel.MatchedEvent) {
 	requestJSON, _ := json.Marshal(evt.Request)
 	responseJSON, _ := json.Marshal(evt.Response)
 
-	record := dbmodel.MatchedEventRecord{
+	record := model.MatchedEventRecord{
 		SessionID:        string(evt.Session),
 		TargetID:         string(evt.Target),
 		URL:              evt.Request.URL,
@@ -160,8 +160,8 @@ type QueryOptions struct {
 }
 
 // Query 查询匹配事件历史
-func (r *EventRepo) Query(opts QueryOptions) ([]dbmodel.MatchedEventRecord, int64, error) {
-	query := r.Db.Model(&dbmodel.MatchedEventRecord{})
+func (r *EventRepo) Query(opts QueryOptions) ([]model.MatchedEventRecord, int64, error) {
+	query := r.Db.Model(&model.MatchedEventRecord{})
 
 	// 应用过滤条件
 	if opts.SessionID != "" {
@@ -197,7 +197,7 @@ func (r *EventRepo) Query(opts QueryOptions) ([]dbmodel.MatchedEventRecord, int6
 		opts.Limit = 1000
 	}
 
-	var records []dbmodel.MatchedEventRecord
+	var records []model.MatchedEventRecord
 	err := query.Order("timestamp DESC").
 		Offset(opts.Offset).
 		Limit(opts.Limit).
@@ -208,13 +208,13 @@ func (r *EventRepo) Query(opts QueryOptions) ([]dbmodel.MatchedEventRecord, int6
 
 // DeleteOldEvents 删除旧事件（数据清理）
 func (r *EventRepo) DeleteOldEvents(beforeTimestamp int64) (int64, error) {
-	result := r.Db.Where("timestamp < ?", beforeTimestamp).Delete(&dbmodel.MatchedEventRecord{})
+	result := r.Db.Where("timestamp < ?", beforeTimestamp).Delete(&model.MatchedEventRecord{})
 	return result.RowsAffected, result.Error
 }
 
 // DeleteBySession 删除指定会话的事件
 func (r *EventRepo) DeleteBySession(sessionID string) error {
-	return r.Db.Where("session_id = ?", sessionID).Delete(&dbmodel.MatchedEventRecord{}).Error
+	return r.Db.Where("session_id = ?", sessionID).Delete(&model.MatchedEventRecord{}).Error
 }
 
 // CleanupOldEvents 根据保留天数清理旧事件
@@ -228,5 +228,5 @@ func (r *EventRepo) CleanupOldEvents(retentionDays int) (int64, error) {
 
 // ClearAll 清空所有事件
 func (r *EventRepo) ClearAll() error {
-	return r.Db.Where("1 = 1").Delete(&dbmodel.MatchedEventRecord{}).Error
+	return r.Db.Where("1 = 1").Delete(&model.MatchedEventRecord{}).Error
 }

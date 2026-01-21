@@ -13,7 +13,7 @@ import (
 	"cdpnetool/internal/logger"
 	"cdpnetool/internal/pool"
 	"cdpnetool/internal/rules"
-	"cdpnetool/pkg/model"
+	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
 
 	"github.com/mafredri/cdp"
@@ -31,16 +31,16 @@ type Manager struct {
 	bodySizeThreshold int64
 	processTimeoutMS  int
 	pool              *pool.Pool
-	events            chan model.InterceptEvent
+	events            chan domain.InterceptEvent
 	targetsMu         sync.Mutex
-	targets           map[model.TargetID]*targetSession
+	targets           map[domain.TargetID]*targetSession
 	stateMu           sync.RWMutex
 	enabled           bool
 }
 
 // targetSession 表示一个已附加并可拦截的 page 目标
 type targetSession struct {
-	id     model.TargetID
+	id     domain.TargetID
 	conn   *rpcc.Conn
 	client *cdp.Client
 	ctx    context.Context
@@ -48,7 +48,7 @@ type targetSession struct {
 }
 
 // New 创建并返回一个管理器，用于管理 CDP 连接与拦截流程
-func New(devtoolsURL string, events chan model.InterceptEvent, l logger.Logger) *Manager {
+func New(devtoolsURL string, events chan domain.InterceptEvent, l logger.Logger) *Manager {
 	if l == nil {
 		l = logger.NewNop()
 	}
@@ -56,7 +56,7 @@ func New(devtoolsURL string, events chan model.InterceptEvent, l logger.Logger) 
 		devtoolsURL: devtoolsURL,
 		log:         l,
 		events:      events,
-		targets:     make(map[model.TargetID]*targetSession),
+		targets:     make(map[domain.TargetID]*targetSession),
 	}
 	m.executor = NewActionExecutor(m)
 	return m
@@ -77,7 +77,7 @@ func (m *Manager) isEnabled() bool {
 }
 
 // AttachTarget 附加到指定浏览器目标并建立 CDP 会话。
-func (m *Manager) AttachTarget(target model.TargetID) error {
+func (m *Manager) AttachTarget(target domain.TargetID) error {
 	m.targetsMu.Lock()
 	defer m.targetsMu.Unlock()
 
@@ -113,7 +113,7 @@ func (m *Manager) AttachTarget(target model.TargetID) error {
 
 	client := cdp.NewClient(conn)
 	ts := &targetSession{
-		id:     model.TargetID(selected.ID),
+		id:     domain.TargetID(selected.ID),
 		conn:   conn,
 		client: client,
 		ctx:    ctx,
@@ -134,7 +134,7 @@ func (m *Manager) AttachTarget(target model.TargetID) error {
 }
 
 // Detach 断开单个目标连接并释放资源。
-func (m *Manager) Detach(target model.TargetID) error {
+func (m *Manager) Detach(target domain.TargetID) error {
 	m.targetsMu.Lock()
 	defer m.targetsMu.Unlock()
 
@@ -343,7 +343,7 @@ func (m *Manager) getResponseBody(ts *targetSession, ev *fetch.RequestPausedRepl
 }
 
 // selectTarget 根据传入的 targetID 或默认策略选择目标
-func (m *Manager) selectTarget(ctx context.Context, target model.TargetID) (*devtool.Target, error) {
+func (m *Manager) selectTarget(ctx context.Context, target domain.TargetID) (*devtool.Target, error) {
 	dt := devtool.New(m.devtoolsURL)
 	targets, err := dt.List(ctx)
 	if err != nil {
@@ -378,7 +378,7 @@ func (m *Manager) selectTarget(ctx context.Context, target model.TargetID) (*dev
 }
 
 // ListTargets 列出当前浏览器中的所有 page 目标，并标记哪些已附加
-func (m *Manager) ListTargets(ctx context.Context) ([]model.TargetInfo, error) {
+func (m *Manager) ListTargets(ctx context.Context) ([]domain.TargetInfo, error) {
 	if m.devtoolsURL == "" {
 		return nil, fmt.Errorf("devtools url empty")
 	}
@@ -392,7 +392,7 @@ func (m *Manager) ListTargets(ctx context.Context) ([]model.TargetInfo, error) {
 	m.targetsMu.Lock()
 	defer m.targetsMu.Unlock()
 
-	out := make([]model.TargetInfo, 0, len(targets))
+	out := make([]domain.TargetInfo, 0, len(targets))
 	for i := range targets {
 		if targets[i] == nil {
 			continue
@@ -400,8 +400,8 @@ func (m *Manager) ListTargets(ctx context.Context) ([]model.TargetInfo, error) {
 		if targets[i].Type != "page" {
 			continue
 		}
-		id := model.TargetID(targets[i].ID)
-		info := model.TargetInfo{
+		id := domain.TargetID(targets[i].ID)
+		info := domain.TargetInfo{
 			ID:        id,
 			Type:      string(targets[i].Type),
 			URL:       targets[i].URL,
@@ -445,18 +445,18 @@ func (m *Manager) SetRuntime(bodySizeThreshold int64, processTimeoutMS int) {
 }
 
 // GetStats 返回规则引擎的命中统计信息
-func (m *Manager) GetStats() model.EngineStats {
+func (m *Manager) GetStats() domain.EngineStats {
 	if m.engine == nil {
-		return model.EngineStats{ByRule: make(map[model.RuleID]int64)}
+		return domain.EngineStats{ByRule: make(map[domain.RuleID]int64)}
 	}
 
 	stats := m.engine.GetStats()
-	byRule := make(map[model.RuleID]int64, len(stats.ByRule))
+	byRule := make(map[domain.RuleID]int64, len(stats.ByRule))
 	for k, v := range stats.ByRule {
-		byRule[model.RuleID(k)] = v
+		byRule[domain.RuleID(k)] = v
 	}
 
-	return model.EngineStats{
+	return domain.EngineStats{
 		Total:   stats.Total,
 		Matched: stats.Matched,
 		ByRule:  byRule,

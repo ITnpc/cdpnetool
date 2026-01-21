@@ -11,10 +11,10 @@ import (
 	"cdpnetool/internal/config"
 	"cdpnetool/internal/logger"
 	"cdpnetool/internal/storage/db"
-	dbmodel "cdpnetool/internal/storage/model"
+	"cdpnetool/internal/storage/model"
 	"cdpnetool/internal/storage/repo"
 	"cdpnetool/pkg/api"
-	pkgmodel "cdpnetool/pkg/model"
+	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -27,7 +27,7 @@ type App struct {
 	cfg            *config.Config
 	log            logger.Logger
 	service        api.Service
-	currentSession pkgmodel.SessionID
+	currentSession domain.SessionID
 	browser        *browser.Browser
 	gdb            *gorm.DB
 	settingsRepo   *repo.SettingsRepo
@@ -69,9 +69,9 @@ func (a *App) Startup(ctx context.Context) {
 
 	// 2. 执行自动迁移
 	err = db.Migrate(gdb,
-		&dbmodel.Setting{},
-		&dbmodel.ConfigRecord{},
-		&dbmodel.MatchedEventRecord{},
+		&model.Setting{},
+		&model.ConfigRecord{},
+		&model.MatchedEventRecord{},
 	)
 	if err != nil {
 		a.log.Err(err, "数据库迁移失败")
@@ -130,7 +130,7 @@ type SessionResult struct {
 func (a *App) StartSession(devToolsURL string) SessionResult {
 	a.log.Info("启动会话", "devToolsURL", devToolsURL)
 
-	cfg := pkgmodel.SessionConfig{DevToolsURL: devToolsURL}
+	cfg := domain.SessionConfig{DevToolsURL: devToolsURL}
 	sid, err := a.service.StartSession(cfg)
 	if err != nil {
 		a.log.Err(err, "启动会话失败")
@@ -149,13 +149,13 @@ func (a *App) StartSession(devToolsURL string) SessionResult {
 func (a *App) StopSession(sessionID string) SessionResult {
 	a.log.Info("停止会话", "sessionID", sessionID)
 
-	err := a.service.StopSession(pkgmodel.SessionID(sessionID))
+	err := a.service.StopSession(domain.SessionID(sessionID))
 	if err != nil {
 		a.log.Err(err, "停止会话失败", "sessionID", sessionID)
 		return SessionResult{Success: false, Error: err.Error()}
 	}
 
-	if a.currentSession == pkgmodel.SessionID(sessionID) {
+	if a.currentSession == domain.SessionID(sessionID) {
 		a.currentSession = ""
 	}
 
@@ -169,14 +169,14 @@ func (a *App) GetCurrentSession() string {
 
 // TargetListResult 表示返回给前端的目标列表结果。
 type TargetListResult struct {
-	Targets []pkgmodel.TargetInfo `json:"targets"`
-	Success bool                  `json:"success"`
-	Error   string                `json:"error,omitempty"`
+	Targets []domain.TargetInfo `json:"targets"`
+	Success bool                `json:"success"`
+	Error   string              `json:"error,omitempty"`
 }
 
 // ListTargets 列出指定会话中的浏览器页面目标。
 func (a *App) ListTargets(sessionID string) TargetListResult {
-	targets, err := a.service.ListTargets(pkgmodel.SessionID(sessionID))
+	targets, err := a.service.ListTargets(domain.SessionID(sessionID))
 	if err != nil {
 		a.log.Err(err, "列出目标失败", "sessionID", sessionID)
 		return TargetListResult{Success: false, Error: err.Error()}
@@ -193,7 +193,7 @@ type OperationResult struct {
 
 // AttachTarget 附加指定页面目标到会话进行拦截。
 func (a *App) AttachTarget(sessionID, targetID string) OperationResult {
-	err := a.service.AttachTarget(pkgmodel.SessionID(sessionID), pkgmodel.TargetID(targetID))
+	err := a.service.AttachTarget(domain.SessionID(sessionID), domain.TargetID(targetID))
 	if err != nil {
 		a.log.Err(err, "附加目标失败", "sessionID", sessionID, "targetID", targetID)
 		return OperationResult{Success: false, Error: err.Error()}
@@ -205,7 +205,7 @@ func (a *App) AttachTarget(sessionID, targetID string) OperationResult {
 
 // DetachTarget 从会话中移除指定页面目标。
 func (a *App) DetachTarget(sessionID, targetID string) OperationResult {
-	err := a.service.DetachTarget(pkgmodel.SessionID(sessionID), pkgmodel.TargetID(targetID))
+	err := a.service.DetachTarget(domain.SessionID(sessionID), domain.TargetID(targetID))
 	if err != nil {
 		a.log.Err(err, "移除目标失败", "sessionID", sessionID, "targetID", targetID)
 		return OperationResult{Success: false, Error: err.Error()}
@@ -271,7 +271,7 @@ func (a *App) ExportConfig(name, rulesJSON string) OperationResult {
 
 // EnableInterception 启用指定会话的网络拦截功能。
 func (a *App) EnableInterception(sessionID string) OperationResult {
-	targets, err := a.service.ListTargets(pkgmodel.SessionID(sessionID))
+	targets, err := a.service.ListTargets(domain.SessionID(sessionID))
 	hasAttached := false
 	if err == nil {
 		for _, t := range targets {
@@ -286,7 +286,7 @@ func (a *App) EnableInterception(sessionID string) OperationResult {
 		return OperationResult{Success: false, Error: "请先在 Targets 标签页附加至少一个目标"}
 	}
 
-	err = a.service.EnableInterception(pkgmodel.SessionID(sessionID))
+	err = a.service.EnableInterception(domain.SessionID(sessionID))
 	if err != nil {
 		a.log.Err(err, "启用拦截失败", "sessionID", sessionID)
 		return OperationResult{Success: false, Error: err.Error()}
@@ -298,7 +298,7 @@ func (a *App) EnableInterception(sessionID string) OperationResult {
 
 // DisableInterception 停用指定会话的网络拦截功能。
 func (a *App) DisableInterception(sessionID string) OperationResult {
-	err := a.service.DisableInterception(pkgmodel.SessionID(sessionID))
+	err := a.service.DisableInterception(domain.SessionID(sessionID))
 	if err != nil {
 		a.log.Err(err, "停用拦截失败", "sessionID", sessionID)
 		return OperationResult{Success: false, Error: err.Error()}
@@ -316,7 +316,7 @@ func (a *App) LoadRules(sessionID string, rulesJSON string) OperationResult {
 		return OperationResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
 	}
 
-	err := a.service.LoadRules(pkgmodel.SessionID(sessionID), &cfg)
+	err := a.service.LoadRules(domain.SessionID(sessionID), &cfg)
 	if err != nil {
 		a.log.Err(err, "加载规则失败", "sessionID", sessionID)
 		return OperationResult{Success: false, Error: err.Error()}
@@ -328,14 +328,14 @@ func (a *App) LoadRules(sessionID string, rulesJSON string) OperationResult {
 
 // StatsResult 表示规则统计结果。
 type StatsResult struct {
-	Stats   pkgmodel.EngineStats `json:"stats"`
-	Success bool                 `json:"success"`
-	Error   string               `json:"error,omitempty"`
+	Stats   domain.EngineStats `json:"stats"`
+	Success bool               `json:"success"`
+	Error   string             `json:"error,omitempty"`
 }
 
 // GetRuleStats 获取指定会话的规则命中统计信息。
 func (a *App) GetRuleStats(sessionID string) StatsResult {
-	stats, err := a.service.GetRuleStats(pkgmodel.SessionID(sessionID))
+	stats, err := a.service.GetRuleStats(domain.SessionID(sessionID))
 	if err != nil {
 		a.log.Err(err, "获取规则统计失败", "sessionID", sessionID)
 		return StatsResult{Success: false, Error: err.Error()}
@@ -345,7 +345,7 @@ func (a *App) GetRuleStats(sessionID string) StatsResult {
 }
 
 // subscribeEvents 订阅拦截事件并通过 Wails 事件系统推送到前端。
-func (a *App) subscribeEvents(sessionID pkgmodel.SessionID) {
+func (a *App) subscribeEvents(sessionID domain.SessionID) {
 	ch, err := a.service.SubscribeEvents(sessionID)
 	if err != nil {
 		a.log.Err(err, "订阅事件失败", "sessionID", sessionID)
@@ -475,16 +475,16 @@ func (a *App) SetMultipleSettings(settingsJSON string) OperationResult {
 
 // ConfigListResult 表示配置列表结果。
 type ConfigListResult struct {
-	Configs []dbmodel.ConfigRecord `json:"configs"`
-	Success bool                   `json:"success"`
-	Error   string                 `json:"error,omitempty"`
+	Configs []model.ConfigRecord `json:"configs"`
+	Success bool                 `json:"success"`
+	Error   string               `json:"error,omitempty"`
 }
 
 // ConfigResult 表示单个配置操作结果。
 type ConfigResult struct {
-	Config  *dbmodel.ConfigRecord `json:"config"`
-	Success bool                  `json:"success"`
-	Error   string                `json:"error,omitempty"`
+	Config  *model.ConfigRecord `json:"config"`
+	Success bool                `json:"success"`
+	Error   string              `json:"error,omitempty"`
 }
 
 // ListConfigs 列出所有已保存的配置。
@@ -511,10 +511,10 @@ func (a *App) GetConfig(id uint) ConfigResult {
 
 // NewConfigResult 表示创建新配置的结果（含完整 JSON）。
 type NewConfigResult struct {
-	Config     *dbmodel.ConfigRecord `json:"config"`
-	ConfigJSON string                `json:"configJson"` // 完整的 rulespec.Config JSON
-	Success    bool                  `json:"success"`
-	Error      string                `json:"error,omitempty"`
+	Config     *model.ConfigRecord `json:"config"`
+	ConfigJSON string              `json:"configJson"` // 完整的 rulespec.Config JSON
+	Success    bool                `json:"success"`
+	Error      string              `json:"error,omitempty"`
 }
 
 // CreateNewConfig 创建一个新的空配置并保存到数据库。
@@ -672,10 +672,10 @@ func (a *App) LoadActiveConfigToSession() OperationResult {
 
 // MatchedEventHistoryResult 表示匹配事件历史查询结果。
 type MatchedEventHistoryResult struct {
-	Events  []dbmodel.MatchedEventRecord `json:"events"`
-	Total   int64                        `json:"total"`
-	Success bool                         `json:"success"`
-	Error   string                       `json:"error,omitempty"`
+	Events  []model.MatchedEventRecord `json:"events"`
+	Total   int64                      `json:"total"`
+	Success bool                       `json:"success"`
+	Error   string                     `json:"error,omitempty"`
 }
 
 // QueryMatchedEventHistory 根据条件查询匹配事件历史记录。

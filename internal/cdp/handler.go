@@ -8,7 +8,7 @@ import (
 	"github.com/mafredri/cdp/protocol/fetch"
 
 	"cdpnetool/internal/rules"
-	"cdpnetool/pkg/model"
+	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
 )
 
@@ -69,8 +69,8 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 }
 
 // captureOriginalData 捕获原始请求/响应数据
-func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPausedReply, stage rulespec.Stage) (model.RequestInfo, model.ResponseInfo) {
-	requestInfo := model.RequestInfo{
+func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPausedReply, stage rulespec.Stage) (domain.RequestInfo, domain.ResponseInfo) {
+	requestInfo := domain.RequestInfo{
 		URL:          ev.Request.URL,
 		Method:       ev.Request.Method,
 		Headers:      make(map[string]string),
@@ -84,7 +84,7 @@ func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPaused
 	requestInfo.Body = GetRequestBody(ev)
 
 	// 响应信息
-	responseInfo := model.ResponseInfo{
+	responseInfo := domain.ResponseInfo{
 		Headers: make(map[string]string),
 	}
 
@@ -104,15 +104,15 @@ func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPaused
 }
 
 // buildRuleMatches 构建规则匹配信息列表
-func buildRuleMatches(matchedRules []*rules.MatchedRule) []model.RuleMatch {
-	matches := make([]model.RuleMatch, len(matchedRules))
+func buildRuleMatches(matchedRules []*rules.MatchedRule) []domain.RuleMatch {
+	matches := make([]domain.RuleMatch, len(matchedRules))
 	for i, mr := range matchedRules {
 		// 收集实际执行的 action 类型
 		actionTypes := make([]string, 0, len(mr.Rule.Actions))
 		for _, action := range mr.Rule.Actions {
 			actionTypes = append(actionTypes, string(action.Type))
 		}
-		matches[i] = model.RuleMatch{
+		matches[i] = domain.RuleMatch{
 			RuleID:   mr.Rule.ID,
 			RuleName: mr.Rule.Name,
 			Actions:  actionTypes,
@@ -127,8 +127,8 @@ func (m *Manager) executeRequestStageWithTracking(
 	ts *targetSession,
 	ev *fetch.RequestPausedReply,
 	matchedRules []*rules.MatchedRule,
-	requestInfo model.RequestInfo,
-	responseInfo model.ResponseInfo,
+	requestInfo domain.RequestInfo,
+	responseInfo domain.ResponseInfo,
 	start time.Time,
 ) {
 	var aggregatedMut *RequestMutation
@@ -165,8 +165,8 @@ func (m *Manager) executeRequestStageWithTracking(
 
 	// 应用聚合后的变更
 	var finalResult string
-	var modifiedRequestInfo model.RequestInfo
-	var modifiedResponseInfo model.ResponseInfo
+	var modifiedRequestInfo domain.RequestInfo
+	var modifiedResponseInfo domain.ResponseInfo
 
 	if aggregatedMut != nil && hasRequestMutation(aggregatedMut) {
 		m.executor.ApplyRequestMutation(ctx, ts, ev, aggregatedMut)
@@ -191,8 +191,8 @@ func (m *Manager) executeResponseStageWithTracking(
 	ts *targetSession,
 	ev *fetch.RequestPausedReply,
 	matchedRules []*rules.MatchedRule,
-	requestInfo model.RequestInfo,
-	responseInfo model.ResponseInfo,
+	requestInfo domain.RequestInfo,
+	responseInfo domain.ResponseInfo,
 	start time.Time,
 ) {
 	responseBody := responseInfo.Body
@@ -247,8 +247,8 @@ func (m *Manager) executeResponseStageWithTracking(
 }
 
 // captureModifiedRequestData 捕获修改后的请求数据
-func (m *Manager) captureModifiedRequestData(original model.RequestInfo, mut *RequestMutation) model.RequestInfo {
-	modified := model.RequestInfo{
+func (m *Manager) captureModifiedRequestData(original domain.RequestInfo, mut *RequestMutation) domain.RequestInfo {
+	modified := domain.RequestInfo{
 		URL:          original.URL,
 		Method:       original.Method,
 		ResourceType: original.ResourceType,
@@ -283,8 +283,8 @@ func (m *Manager) captureModifiedRequestData(original model.RequestInfo, mut *Re
 }
 
 // captureModifiedResponseData 捕获修改后的响应数据
-func (m *Manager) captureModifiedResponseData(original model.ResponseInfo, mut *ResponseMutation, finalBody string) model.ResponseInfo {
-	modified := model.ResponseInfo{
+func (m *Manager) captureModifiedResponseData(original domain.ResponseInfo, mut *ResponseMutation, finalBody string) domain.ResponseInfo {
+	modified := domain.ResponseInfo{
 		StatusCode: original.StatusCode,
 		Headers:    make(map[string]string),
 		Body:       finalBody,
@@ -447,16 +447,16 @@ func (m *Manager) degradeAndContinue(ts *targetSession, ev *fetch.RequestPausedR
 
 // sendMatchedEvent 发送匹配事件
 func (m *Manager) sendMatchedEvent(
-	target model.TargetID,
+	target domain.TargetID,
 	finalResult string,
-	matchedRules []model.RuleMatch,
-	requestInfo model.RequestInfo,
-	responseInfo model.ResponseInfo,
+	matchedRules []domain.RuleMatch,
+	requestInfo domain.RequestInfo,
+	responseInfo domain.ResponseInfo,
 ) {
-	evt := model.InterceptEvent{
+	evt := domain.InterceptEvent{
 		IsMatched: true,
-		Matched: &model.MatchedEvent{
-			NetworkEvent: model.NetworkEvent{
+		Matched: &domain.MatchedEvent{
+			NetworkEvent: domain.NetworkEvent{
 				Session:      "", // 会在上层填充
 				Target:       target,
 				Timestamp:    time.Now().UnixMilli(),
@@ -476,8 +476,8 @@ func (m *Manager) sendMatchedEvent(
 }
 
 // sendUnmatchedEvent 发送未匹配事件
-func (m *Manager) sendUnmatchedEvent(target model.TargetID, ev *fetch.RequestPausedReply, stage rulespec.Stage, statusCode int) {
-	requestInfo := model.RequestInfo{
+func (m *Manager) sendUnmatchedEvent(target domain.TargetID, ev *fetch.RequestPausedReply, stage rulespec.Stage, statusCode int) {
+	requestInfo := domain.RequestInfo{
 		URL:          ev.Request.URL,
 		Method:       ev.Request.Method,
 		Headers:      make(map[string]string),
@@ -491,7 +491,7 @@ func (m *Manager) sendUnmatchedEvent(target model.TargetID, ev *fetch.RequestPau
 	requestInfo.Body = GetRequestBody(ev)
 
 	// 响应信息
-	responseInfo := model.ResponseInfo{
+	responseInfo := domain.ResponseInfo{
 		StatusCode: statusCode,
 		Headers:    make(map[string]string),
 	}
@@ -509,10 +509,10 @@ func (m *Manager) sendUnmatchedEvent(target model.TargetID, ev *fetch.RequestPau
 		}
 	}
 
-	evt := model.InterceptEvent{
+	evt := domain.InterceptEvent{
 		IsMatched: false,
-		Unmatched: &model.UnmatchedEvent{
-			NetworkEvent: model.NetworkEvent{
+		Unmatched: &domain.UnmatchedEvent{
+			NetworkEvent: domain.NetworkEvent{
 				Session:   "", // 会在上层填充
 				Target:    target,
 				Timestamp: time.Now().UnixMilli(),

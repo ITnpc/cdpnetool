@@ -9,7 +9,7 @@ import (
 
 	"cdpnetool/internal/cdp"
 	"cdpnetool/internal/logger"
-	"cdpnetool/pkg/model"
+	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
 
 	"github.com/google/uuid"
@@ -17,15 +17,15 @@ import (
 
 type svc struct {
 	mu       sync.Mutex
-	sessions map[model.SessionID]*session
+	sessions map[domain.SessionID]*session
 	log      logger.Logger
 }
 
 type session struct {
-	id     model.SessionID
-	cfg    model.SessionConfig
+	id     domain.SessionID
+	cfg    domain.SessionConfig
 	config *rulespec.Config
-	events chan model.InterceptEvent
+	events chan domain.InterceptEvent
 	mgr    *cdp.Manager
 }
 
@@ -34,11 +34,11 @@ func New(l logger.Logger) *svc {
 	if l == nil {
 		l = logger.NewNop()
 	}
-	return &svc{sessions: make(map[model.SessionID]*session), log: l}
+	return &svc{sessions: make(map[domain.SessionID]*session), log: l}
 }
 
 // StartSession 创建新会话并初始化管理器
-func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
+func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -55,11 +55,11 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 		cfg.PendingCapacity = 256
 	}
 
-	id := model.SessionID(uuid.New().String())
+	id := domain.SessionID(uuid.New().String())
 	ses := &session{
 		id:     id,
 		cfg:    cfg,
-		events: make(chan model.InterceptEvent, cfg.PendingCapacity),
+		events: make(chan domain.InterceptEvent, cfg.PendingCapacity),
 	}
 	ses.mgr = cdp.New(cfg.DevToolsURL, ses.events, s.log)
 	ses.mgr.SetConcurrency(cfg.Concurrency, cfg.PendingCapacity)
@@ -81,7 +81,7 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 }
 
 // StopSession 停止并清理指定会话
-func (s *svc) StopSession(id model.SessionID) error {
+func (s *svc) StopSession(id domain.SessionID) error {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	if ok {
@@ -101,7 +101,7 @@ func (s *svc) StopSession(id model.SessionID) error {
 }
 
 // AttachTarget 为指定会话附着到浏览器目标
-func (s *svc) AttachTarget(id model.SessionID, target model.TargetID) error {
+func (s *svc) AttachTarget(id domain.SessionID, target domain.TargetID) error {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
@@ -126,7 +126,7 @@ func (s *svc) AttachTarget(id model.SessionID, target model.TargetID) error {
 }
 
 // DetachTarget 为指定会话断开目标连接
-func (s *svc) DetachTarget(id model.SessionID, target model.TargetID) error {
+func (s *svc) DetachTarget(id domain.SessionID, target domain.TargetID) error {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
@@ -140,7 +140,7 @@ func (s *svc) DetachTarget(id model.SessionID, target model.TargetID) error {
 }
 
 // ListTargets 列出指定会话中的所有浏览器目标
-func (s *svc) ListTargets(id model.SessionID) ([]model.TargetInfo, error) {
+func (s *svc) ListTargets(id domain.SessionID) ([]domain.TargetInfo, error) {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
@@ -160,7 +160,7 @@ func (s *svc) ListTargets(id model.SessionID) ([]model.TargetInfo, error) {
 }
 
 // EnableInterception 启用会话的拦截功能
-func (s *svc) EnableInterception(id model.SessionID) error {
+func (s *svc) EnableInterception(id domain.SessionID) error {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
@@ -180,7 +180,7 @@ func (s *svc) EnableInterception(id model.SessionID) error {
 }
 
 // DisableInterception 停用会话的拦截功能
-func (s *svc) DisableInterception(id model.SessionID) error {
+func (s *svc) DisableInterception(id domain.SessionID) error {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
@@ -200,7 +200,7 @@ func (s *svc) DisableInterception(id model.SessionID) error {
 }
 
 // LoadRules 为会话加载规则配置并应用到管理器
-func (s *svc) LoadRules(id model.SessionID, cfg *rulespec.Config) error {
+func (s *svc) LoadRules(id domain.SessionID, cfg *rulespec.Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ses, ok := s.sessions[id]
@@ -216,21 +216,21 @@ func (s *svc) LoadRules(id model.SessionID, cfg *rulespec.Config) error {
 }
 
 // GetRuleStats 返回会话内规则引擎的命中统计
-func (s *svc) GetRuleStats(id model.SessionID) (model.EngineStats, error) {
+func (s *svc) GetRuleStats(id domain.SessionID) (domain.EngineStats, error) {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return model.EngineStats{ByRule: make(map[model.RuleID]int64)}, nil
+		return domain.EngineStats{ByRule: make(map[domain.RuleID]int64)}, nil
 	}
 	if ses.mgr == nil {
-		return model.EngineStats{ByRule: make(map[model.RuleID]int64)}, nil
+		return domain.EngineStats{ByRule: make(map[domain.RuleID]int64)}, nil
 	}
 	return ses.mgr.GetStats(), nil
 }
 
 // SubscribeEvents 订阅会话事件流
-func (s *svc) SubscribeEvents(id model.SessionID) (<-chan model.InterceptEvent, error) {
+func (s *svc) SubscribeEvents(id domain.SessionID) (<-chan domain.InterceptEvent, error) {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
