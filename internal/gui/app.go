@@ -83,7 +83,7 @@ func (a *App) Startup(ctx context.Context) {
 	// 3. 注入数据库实例到仓库
 	a.settingsRepo = repo.NewSettingsRepo(gdb)
 	a.configRepo = repo.NewConfigRepo(gdb)
-	a.eventRepo = repo.NewEventRepo(gdb)
+	a.eventRepo = repo.NewEventRepo(gdb, a.log)
 	a.log.Debug("数据持久化层初始化完成")
 }
 

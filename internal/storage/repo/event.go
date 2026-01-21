@@ -5,29 +5,53 @@ import (
 	"sync"
 	"time"
 
+	"cdpnetool/internal/logger"
 	dbmodel "cdpnetool/internal/storage/model"
 	pkgmodel "cdpnetool/pkg/model"
 
 	"gorm.io/gorm"
 )
 
+// EventRepoOptions 事件仓库配置选项
+type EventRepoOptions struct {
+	BatchSize     int           // 批量写入大小
+	FlushInterval time.Duration // 自动刷新间隔
+	MaxBufferSize int           // 缓冲区最大容量（防止内存溢出）
+}
+
+// DefaultEventRepoOptions 默认配置
+func DefaultEventRepoOptions() EventRepoOptions {
+	return EventRepoOptions{
+		BatchSize:     50,
+		FlushInterval: 5 * time.Second,
+		MaxBufferSize: 1000,
+	}
+}
+
 // EventRepo 事件仓库（只存储匹配事件到数据库）
 type EventRepo struct {
 	BaseRepository[dbmodel.MatchedEventRecord]
-	buffer    []dbmodel.MatchedEventRecord
-	bufferMu  sync.Mutex
-	batchSize int
-	flushCh   chan struct{}
-	stopCh    chan struct{}
-	wg        sync.WaitGroup
+	log      logger.Logger
+	opts     EventRepoOptions
+	buffer   []dbmodel.MatchedEventRecord
+	bufferMu sync.Mutex
+	flushCh  chan struct{}
+	stopCh   chan struct{}
+	wg       sync.WaitGroup
 }
 
 // NewEventRepo 创建事件仓库实例
-func NewEventRepo(db *gorm.DB) *EventRepo {
+func NewEventRepo(db *gorm.DB, log logger.Logger, opts ...EventRepoOptions) *EventRepo {
+	opt := DefaultEventRepoOptions()
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+
 	r := &EventRepo{
 		BaseRepository: *NewBaseRepository[dbmodel.MatchedEventRecord](db),
-		buffer:         make([]dbmodel.MatchedEventRecord, 0, 100),
-		batchSize:      50,
+		log:            log,
+		opts:           opt,
+		buffer:         make([]dbmodel.MatchedEventRecord, 0, opt.BatchSize),
 		flushCh:        make(chan struct{}, 1),
 		stopCh:         make(chan struct{}),
 	}
@@ -40,7 +64,7 @@ func NewEventRepo(db *gorm.DB) *EventRepo {
 // asyncWriter 异步批量写入协程
 func (r *EventRepo) asyncWriter() {
 	defer r.wg.Done()
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(r.opts.FlushInterval)
 	defer ticker.Stop()
 
 	for {
@@ -65,13 +89,12 @@ func (r *EventRepo) flush() {
 		return
 	}
 	toWrite := r.buffer
-	r.buffer = make([]dbmodel.MatchedEventRecord, 0, 100)
+	r.buffer = make([]dbmodel.MatchedEventRecord, 0, r.opts.BatchSize)
 	r.bufferMu.Unlock()
 
 	// 批量插入
-	if err := r.Db.CreateInBatches(toWrite, 100).Error; err != nil {
-		// 记录错误但不阻塞
-		_ = err
+	if err := r.Db.CreateInBatches(toWrite, r.opts.BatchSize).Error; err != nil {
+		r.log.Error("批量保存匹配事件到数据库失败", "error", err, "count", len(toWrite))
 	}
 }
 
@@ -83,6 +106,15 @@ func (r *EventRepo) Stop() {
 
 // RecordMatched 记录匹配事件（异步写入数据库）
 func (r *EventRepo) RecordMatched(evt *pkgmodel.MatchedEvent) {
+	r.bufferMu.Lock()
+	// 容量保护：如果缓冲区已满，丢弃新事件并记录警告
+	if len(r.buffer) >= r.opts.MaxBufferSize {
+		r.bufferMu.Unlock()
+		r.log.Warn("事件缓冲区已满，丢弃当前事件", "url", evt.Request.URL)
+		return
+	}
+	r.bufferMu.Unlock()
+
 	// 序列化规则列表
 	matchedRulesJSON, _ := json.Marshal(evt.MatchedRules)
 	requestJSON, _ := json.Marshal(evt.Request)
@@ -104,7 +136,7 @@ func (r *EventRepo) RecordMatched(evt *pkgmodel.MatchedEvent) {
 
 	r.bufferMu.Lock()
 	r.buffer = append(r.buffer, record)
-	needFlush := len(r.buffer) >= r.batchSize
+	needFlush := len(r.buffer) >= r.opts.BatchSize
 	r.bufferMu.Unlock()
 
 	if needFlush {
