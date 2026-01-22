@@ -55,11 +55,21 @@ func New(cfg Config) *Handler {
 	}
 }
 
+// SetEngine 设置规则引擎
+func (h *Handler) SetEngine(engine *rules.Engine) {
+	h.engine = engine
+}
+
+// SetProcessTimeout 设置处理超时时间
+func (h *Handler) SetProcessTimeout(timeoutMS int) {
+	h.processTimeoutMS = timeoutMS
+}
+
 // HandleRequest 处理请求拦截
 func (h *Handler) HandleRequest(
-	client *cdp.Client,
 	ctx context.Context,
 	targetID domain.TargetID,
+	client *cdp.Client,
 	ev *fetch.RequestPausedReply,
 	l logger.Logger,
 ) {
@@ -81,21 +91,32 @@ func (h *Handler) HandleRequest(
 		return
 	}
 
-	requestInfo := h.captureRequestData(ev)
-	stageCtx := StageContext{
-		MatchedRules: matchedRules,
-		RequestInfo:  requestInfo,
-		Start:        start,
+	// 1. 计算变更 (Mutation)
+	mutation, blockRule, ruleMatches := h.computeRequestMutation(ev, matchedRules)
+
+	// 2. 执行修改 (Execution)
+	var finalResult string
+	if blockRule != nil {
+		h.executor.ApplyRequestMutation(ctx, client, ev, mutation)
+		finalResult = "blocked"
+	} else if mutation != nil && hasRequestMutation(mutation) {
+		h.executor.ApplyRequestMutation(ctx, client, ev, mutation)
+		finalResult = "modified"
+	} else {
+		h.executor.ContinueRequest(ctx, client, ev)
+		finalResult = "passed"
 	}
 
-	h.executeRequestStageWithTracking(ctx, client, targetID, ev, stageCtx, l)
+	// 3. 追踪与通知 (Tracking & Event)
+	originalInfo := h.captureRequestData(ev)
+	h.emitRequestEvent(targetID, finalResult, ruleMatches, originalInfo, mutation, start, l)
 }
 
 // HandleResponse 处理响应拦截
 func (h *Handler) HandleResponse(
-	client *cdp.Client,
 	ctx context.Context,
 	targetID domain.TargetID,
+	client *cdp.Client,
 	ev *fetch.RequestPausedReply,
 	l logger.Logger,
 ) {
@@ -121,148 +142,126 @@ func (h *Handler) HandleResponse(
 		return
 	}
 
-	requestInfo, responseInfo := h.captureResponseData(client, ctx, ev)
-	stageCtx := StageContext{
-		MatchedRules: matchedRules,
-		RequestInfo:  requestInfo,
-		ResponseInfo: responseInfo,
-		Start:        start,
-	}
+	// 1. 捕获原始数据 (响应体)
+	originalReqInfo, originalResInfo := h.captureResponseData(client, ctx, ev)
 
-	h.executeResponseStageWithTracking(ctx, client, targetID, ev, stageCtx, l)
-}
+	// 2. 计算变更 (Mutation)
+	mutation, ruleMatches, finalBody := h.computeResponseMutation(ev, matchedRules, originalResInfo.Body)
 
-// executeRequestStageWithTracking 执行请求阶段的行为并跟踪变更
-func (h *Handler) executeRequestStageWithTracking(
-	ctx context.Context,
-	client *cdp.Client,
-	targetID domain.TargetID,
-	ev *fetch.RequestPausedReply,
-	stageCtx StageContext,
-	l logger.Logger,
-) {
-	var aggregatedMut *executor.RequestMutation
-	ruleMatches := buildRuleMatches(stageCtx.MatchedRules)
-
-	for _, matched := range stageCtx.MatchedRules {
-		rule := matched.Rule
-		if len(rule.Actions) == 0 {
-			continue
-		}
-
-		// 执行当前规则的所有行为
-		mut := h.executor.ExecuteRequestActions(rule.Actions, ev)
-		if mut == nil {
-			continue
-		}
-
-		// 检查是否是终结性行为（block）
-		if mut.Block != nil {
-			h.executor.ApplyRequestMutation(ctx, client, ev, mut)
-			// 发送 blocked 事件
-			h.sendMatchedEvent(targetID, "blocked", ruleMatches, stageCtx.RequestInfo, stageCtx.ResponseInfo)
-			l.Info("请求被阻止", "rule", rule.ID)
-			return
-		}
-
-		// 聚合变更
-		if aggregatedMut == nil {
-			aggregatedMut = mut
-		} else {
-			mergeRequestMutation(aggregatedMut, mut)
-		}
-	}
-
-	// 应用聚合后的变更
+	// 3. 执行修改 (Execution)
 	var finalResult string
-	var modifiedRequestInfo domain.RequestInfo
-	var modifiedResponseInfo domain.ResponseInfo
-
-	if aggregatedMut != nil && hasRequestMutation(aggregatedMut) {
-		h.executor.ApplyRequestMutation(ctx, client, ev, aggregatedMut)
+	if mutation != nil && hasResponseMutation(mutation) {
+		if mutation.Body == nil && finalBody != "" {
+			mutation.Body = &finalBody
+		}
+		h.executor.ApplyResponseMutation(ctx, client, ev, mutation)
 		finalResult = "modified"
-		modifiedRequestInfo = h.captureModifiedRequestData(stageCtx.RequestInfo, aggregatedMut)
-		modifiedResponseInfo = stageCtx.ResponseInfo
-	} else {
-		h.executor.ContinueRequest(ctx, client, ev)
-		finalResult = "passed"
-		modifiedRequestInfo = stageCtx.RequestInfo
-		modifiedResponseInfo = stageCtx.ResponseInfo
-	}
-
-	// 发送匹配事件
-	h.sendMatchedEvent(targetID, finalResult, ruleMatches, modifiedRequestInfo, modifiedResponseInfo)
-	l.Debug("请求阶段处理完成", "result", finalResult, "duration", time.Since(stageCtx.Start))
-}
-
-// executeResponseStageWithTracking 执行响应阶段的行为并跟踪变更
-func (h *Handler) executeResponseStageWithTracking(
-	ctx context.Context,
-	client *cdp.Client,
-	targetID domain.TargetID,
-	ev *fetch.RequestPausedReply,
-	stageCtx StageContext,
-	l logger.Logger,
-) {
-	responseBody := stageCtx.ResponseInfo.Body
-	var aggregatedMut *executor.ResponseMutation
-	ruleMatches := buildRuleMatches(stageCtx.MatchedRules)
-
-	for _, matched := range stageCtx.MatchedRules {
-		rule := matched.Rule
-		if len(rule.Actions) == 0 {
-			continue
-		}
-
-		// 执行当前规则的所有行为
-		mut := h.executor.ExecuteResponseActions(rule.Actions, ev, responseBody)
-		if mut == nil {
-			continue
-		}
-
-		// 聚合变更
-		if aggregatedMut == nil {
-			aggregatedMut = mut
-		} else {
-			mergeResponseMutation(aggregatedMut, mut)
-		}
-
-		// 更新 responseBody 供后续规则使用
-		if mut.Body != nil {
-			responseBody = *mut.Body
-		}
-	}
-
-	// 应用聚合后的变更
-	var finalResult string
-
-	if aggregatedMut != nil && hasResponseMutation(aggregatedMut) {
-		// 确保 Body 是最新的
-		if aggregatedMut.Body == nil && responseBody != "" {
-			aggregatedMut.Body = &responseBody
-		}
-		h.executor.ApplyResponseMutation(ctx, client, ev, aggregatedMut)
-		finalResult = "modified"
-		modifiedResponseInfo := h.captureModifiedResponseData(stageCtx.ResponseInfo, aggregatedMut, responseBody)
-		// 发送匹配事件
-		h.sendMatchedEvent(targetID, finalResult, ruleMatches, stageCtx.RequestInfo, modifiedResponseInfo)
 	} else {
 		h.executor.ContinueResponse(ctx, client, ev)
 		finalResult = "passed"
-		// 发送匹配事件
-		h.sendMatchedEvent(targetID, finalResult, ruleMatches, stageCtx.RequestInfo, stageCtx.ResponseInfo)
 	}
-	l.Debug("响应阶段处理完成", "result", finalResult, "duration", time.Since(stageCtx.Start))
+
+	// 4. 追踪与通知 (Tracking & Event)
+	h.emitResponseEvent(targetID, finalResult, ruleMatches, originalReqInfo, originalResInfo, mutation, finalBody, start, l)
 }
 
-// SetEngine 设置规则引擎
-func (h *Handler) SetEngine(engine *rules.Engine) {
-	h.engine = engine
+// computeRequestMutation 计算请求阶段的所有变更
+func (h *Handler) computeRequestMutation(ev *fetch.RequestPausedReply, matchedRules []*rules.MatchedRule) (*executor.RequestMutation, *rules.MatchedRule, []domain.RuleMatch) {
+	var aggregated *executor.RequestMutation
+	ruleMatches := buildRuleMatches(matchedRules)
+
+	for _, matched := range matchedRules {
+		if len(matched.Rule.Actions) == 0 {
+			continue
+		}
+
+		mut := h.executor.ExecuteRequestActions(matched.Rule.Actions, ev)
+		if mut == nil {
+			continue
+		}
+
+		// 处理阻止行为
+		if mut.Block != nil {
+			return mut, matched, ruleMatches
+		}
+
+		// 聚合
+		if aggregated == nil {
+			aggregated = mut
+		} else {
+			mergeRequestMutation(aggregated, mut)
+		}
+	}
+	return aggregated, nil, ruleMatches
 }
 
-// SetProcessTimeout 设置处理超时时间
-func (h *Handler) SetProcessTimeout(timeoutMS int) {
-	h.processTimeoutMS = timeoutMS
+// computeResponseMutation 计算响应阶段的所有变更
+func (h *Handler) computeResponseMutation(ev *fetch.RequestPausedReply, matchedRules []*rules.MatchedRule, originalBody string) (*executor.ResponseMutation, []domain.RuleMatch, string) {
+	var aggregated *executor.ResponseMutation
+	currentBody := originalBody
+	ruleMatches := buildRuleMatches(matchedRules)
+
+	for _, matched := range matchedRules {
+		if len(matched.Rule.Actions) == 0 {
+			continue
+		}
+
+		mut := h.executor.ExecuteResponseActions(matched.Rule.Actions, ev, currentBody)
+		if mut == nil {
+			continue
+		}
+
+		if aggregated == nil {
+			aggregated = mut
+		} else {
+			mergeResponseMutation(aggregated, mut)
+		}
+
+		if mut.Body != nil {
+			currentBody = *mut.Body
+		}
+	}
+	return aggregated, ruleMatches, currentBody
+}
+
+// emitRequestEvent 组装并发送请求事件
+func (h *Handler) emitRequestEvent(
+	targetID domain.TargetID,
+	result string,
+	matches []domain.RuleMatch,
+	original domain.RequestInfo,
+	mut *executor.RequestMutation,
+	start time.Time,
+	l logger.Logger,
+) {
+	modifiedInfo := original
+	if result == "modified" && mut != nil {
+		modifiedInfo = h.captureModifiedRequestData(original, mut)
+	}
+
+	h.sendMatchedEvent(targetID, result, matches, modifiedInfo, domain.ResponseInfo{})
+	l.Debug("请求处理完成", "result", result, "duration", time.Since(start))
+}
+
+// emitResponseEvent 组装并发送响应事件
+func (h *Handler) emitResponseEvent(
+	targetID domain.TargetID,
+	result string,
+	matches []domain.RuleMatch,
+	originalReq domain.RequestInfo,
+	originalRes domain.ResponseInfo,
+	mut *executor.ResponseMutation,
+	finalBody string,
+	start time.Time,
+	l logger.Logger,
+) {
+	modifiedResInfo := originalRes
+	if result == "modified" && mut != nil {
+		modifiedResInfo = h.captureModifiedResponseData(originalRes, mut, finalBody)
+	}
+
+	h.sendMatchedEvent(targetID, result, matches, originalReq, modifiedResInfo)
+	l.Debug("响应处理完成", "result", result, "duration", time.Since(start))
 }
 
 // buildEvalContext 构造规则匹配上下文

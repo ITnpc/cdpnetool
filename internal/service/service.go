@@ -111,9 +111,9 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 
 		// 3. 根据阶段分发处理
 		if ev.ResponseStatusCode == nil {
-			h.HandleRequest(client, ctx, targetID, ev, l)
+			h.HandleRequest(ctx, targetID, client, ev, l)
 		} else {
-			h.HandleResponse(client, ctx, targetID, ev, l)
+			h.HandleResponse(ctx, targetID, client, ev, l)
 		}
 	}
 	intr := interceptor.New(intrHandler, s.log)
