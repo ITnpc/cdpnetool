@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Switch } from '@/components/ui/switch'
 import { 
   Search, 
   X,
@@ -13,7 +14,8 @@ import {
   Trash2,
   Filter,
   CheckCircle,
-  XCircle
+  XCircle,
+  Radar
 } from 'lucide-react'
 import type { 
   MatchedEventWithId, 
@@ -29,6 +31,8 @@ import {
 interface EventsPanelProps {
   matchedEvents: MatchedEventWithId[]
   unmatchedEvents: UnmatchedEventWithId[]
+  collectUnmatched: boolean
+  onCollectUnmatchedChange: (enabled: boolean) => void
   onClearMatched?: () => void
   onClearUnmatched?: () => void
 }
@@ -36,6 +40,8 @@ interface EventsPanelProps {
 export function EventsPanel({ 
   matchedEvents, 
   unmatchedEvents, 
+  collectUnmatched,
+  onCollectUnmatchedChange,
   onClearMatched, 
   onClearUnmatched 
 }: EventsPanelProps) {
@@ -46,24 +52,39 @@ export function EventsPanel({
 
   return (
     <div className="h-full flex flex-col">
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'matched' | 'unmatched')} className="flex-1 flex flex-col">
-        <TabsList className="w-fit mb-4">
-          <TabsTrigger value="matched" className="gap-2">
-            <CheckCircle className="w-4 h-4" />
-            匹配请求
-            {totalMatched > 0 && (
-              <Badge variant="secondary" className="ml-1 text-xs">{totalMatched}</Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="unmatched" className="gap-2">
-            <XCircle className="w-4 h-4" />
-            未匹配请求
-            {totalUnmatched > 0 && (
-              <Badge variant="secondary" className="ml-1 text-xs">{totalUnmatched}</Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
+      <div className="flex items-center justify-between mb-2">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'matched' | 'unmatched')} className="flex-1">
+          <TabsList className="w-fit">
+            <TabsTrigger value="matched" className="gap-2">
+              <CheckCircle className="w-4 h-4" />
+              匹配请求
+              {totalMatched > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">{totalMatched}</Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="unmatched" className="gap-2">
+              <XCircle className="w-4 h-4" />
+              未匹配请求
+              {totalUnmatched > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">{totalUnmatched}</Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
+        {/* 捕获开关 */}
+        <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-muted/30 border border-transparent hover:border-muted-foreground/20 transition-all">
+          <Radar className={`w-4 h-4 ${collectUnmatched ? 'text-primary animate-pulse' : 'text-muted-foreground'}`} />
+          <span className="text-xs cursor-pointer select-none">捕获模式</span>
+          <Switch 
+            checked={collectUnmatched} 
+            onCheckedChange={onCollectUnmatchedChange}
+            className="scale-75"
+          />
+        </div>
+      </div>
+
+      <Tabs value={activeTab} className="flex-1 flex flex-col overflow-hidden">
         <TabsContent value="matched" className="flex-1 m-0 overflow-hidden">
           <MatchedEventsList events={matchedEvents} onClear={onClearMatched} />
         </TabsContent>

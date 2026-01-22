@@ -21,6 +21,7 @@ interface SessionState {
   devToolsURL: string
   isConnected: boolean
   isIntercepting: boolean
+  collectUnmatched: boolean // 是否收集未匹配的请求
   activeConfigId: number | null
   targets: TargetInfo[]
   attachedTargetId: string | null
@@ -32,6 +33,7 @@ interface SessionState {
   setCurrentSession: (id: string | null) => void
   setConnected: (connected: boolean) => void
   setIntercepting: (intercepting: boolean) => void
+  setCollectUnmatched: (enabled: boolean) => void
   setActiveConfigId: (id: number | null) => void
   setTargets: (targets: TargetInfo[]) => void
   setAttachedTargetId: (targetId: string | null) => void
@@ -54,6 +56,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   devToolsURL: 'http://localhost:9222',
   isConnected: false,
   isIntercepting: false,
+  collectUnmatched: false,
   activeConfigId: null,
   targets: [],
   attachedTargetId: null,
@@ -64,6 +67,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   setCurrentSession: (id) => set({ currentSessionId: id }),
   setConnected: (connected) => set({ isConnected: connected }),
   setIntercepting: (intercepting) => set({ isIntercepting: intercepting }),
+  setCollectUnmatched: (enabled) => set({ collectUnmatched: enabled }),
   setActiveConfigId: (id) => set({ activeConfigId: id }),
   setTargets: (targets) => set({ targets }),
   setAttachedTargetId: (targetId) => set({ attachedTargetId: targetId }),

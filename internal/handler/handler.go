@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"cdpnetool/internal/executor"
@@ -18,13 +19,24 @@ import (
 	"github.com/mafredri/cdp/protocol/fetch"
 )
 
-// Handler 事件处理器，负责协调规则匹配、行为执行和事件发送
+// Handler 事件处理器，负责协调规则匹配、行为执行和全周期事件合并
 type Handler struct {
 	engine           *rules.Engine
 	executor         *executor.Executor
 	events           chan domain.NetworkEvent
 	processTimeoutMS int
 	log              logger.Logger
+	collectUnmatched bool     // 是否收集未匹配的请求
+	pendingPool      sync.Map // 在途请求池: map[RequestID]*PendingRequest
+}
+
+// PendingRequest 暂存在内存中的请求阶段信息
+type PendingRequest struct {
+	TraceID      string
+	StartTime    time.Time
+	RequestInfo  domain.RequestInfo
+	MatchedRules []domain.RuleMatch
+	IsMatched    bool
 }
 
 // Config 配置选项
@@ -34,24 +46,43 @@ type Config struct {
 	Events           chan domain.NetworkEvent
 	ProcessTimeoutMS int
 	Logger           logger.Logger
+	CollectUnmatched bool
 }
 
-// StageContext 拦截事件阶段上下文
-type StageContext struct {
-	MatchedRules []*rules.MatchedRule
-	RequestInfo  domain.RequestInfo
-	ResponseInfo domain.ResponseInfo
-	Start        time.Time
-}
-
-// New 创建事件处理器
+// New 创建事件处理器并启动清理协程
 func New(cfg Config) *Handler {
-	return &Handler{
+	h := &Handler{
 		engine:           cfg.Engine,
 		executor:         cfg.Executor,
 		events:           cfg.Events,
 		processTimeoutMS: cfg.ProcessTimeoutMS,
 		log:              cfg.Logger,
+		collectUnmatched: cfg.CollectUnmatched,
+	}
+	go h.cleanupLoop()
+	return h
+}
+
+// SetCollectUnmatched 动态设置是否收集未匹配请求
+func (h *Handler) SetCollectUnmatched(collect bool) {
+	h.collectUnmatched = collect
+}
+
+// cleanupLoop 定期清理内存池中的孤儿请求（防止由于浏览器异常导致的数据残留）
+func (h *Handler) cleanupLoop() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		now := time.Now()
+		h.pendingPool.Range(func(key, value any) bool {
+			req, ok := value.(*PendingRequest)
+			if ok && now.Sub(req.StartTime) > 60*time.Second {
+				h.pendingPool.Delete(key)
+				h.log.Debug("清理过期请求记录", "requestID", key, "traceID", req.TraceID)
+			}
+			return true
+		})
 	}
 }
 
@@ -72,83 +103,103 @@ func (h *Handler) HandleRequest(
 	client *cdp.Client,
 	ev *fetch.RequestPausedReply,
 	l logger.Logger,
+	traceID string,
 ) {
-	l.Debug("开始处理请求拦截", "method", ev.Request.Method)
-
 	evalCtx := h.buildEvalContext(ev)
 	if h.engine == nil {
-		h.sendUnmatchedRequestEvent(targetID, ev)
+		if h.collectUnmatched {
+			h.saveToPool(ev, nil, nil, false, traceID)
+		}
 		h.executor.ContinueRequest(ctx, client, ev)
 		return
 	}
 
 	start := time.Now()
 	matchedRules := h.engine.EvalForStage(evalCtx, rulespec.StageRequest)
+
 	if len(matchedRules) == 0 {
-		h.sendUnmatchedRequestEvent(targetID, ev)
+		if h.collectUnmatched {
+			h.saveToPool(ev, nil, nil, false, traceID)
+		}
 		h.executor.ContinueRequest(ctx, client, ev)
-		l.Debug("请求处理完成，无匹配规则", "duration", time.Since(start))
 		return
 	}
 
-	// 1. 计算变更 (Mutation)
+	// 1. 计算变更
 	mutation, blockRule, ruleMatches := h.computeRequestMutation(ev, matchedRules)
 
-	// 2. 执行修改 (Execution)
-	var finalResult string
+	// 2. 执行修改
 	if blockRule != nil {
 		h.executor.ApplyRequestMutation(ctx, client, ev, mutation)
-		finalResult = "blocked"
-	} else if mutation != nil && hasRequestMutation(mutation) {
-		h.executor.ApplyRequestMutation(ctx, client, ev, mutation)
-		finalResult = "modified"
-	} else {
-		h.executor.ContinueRequest(ctx, client, ev)
-		finalResult = "passed"
+		originalInfo := h.captureRequestData(ev)
+		h.emitRequestEvent(targetID, "blocked", ruleMatches, originalInfo, mutation, start, l)
+		return
 	}
 
-	// 3. 追踪与通知 (Tracking & Event)
-	originalInfo := h.captureRequestData(ev)
-	h.emitRequestEvent(targetID, finalResult, ruleMatches, originalInfo, mutation, start, l)
+	if mutation != nil && hasRequestMutation(mutation) {
+		h.executor.ApplyRequestMutation(ctx, client, ev, mutation)
+	} else {
+		h.executor.ContinueRequest(ctx, client, ev)
+	}
+
+	// 3. 入池暂存
+	h.saveToPool(ev, mutation, ruleMatches, true, traceID)
+}
+
+// saveToPool 将请求信息存入待处理池
+func (h *Handler) saveToPool(
+	ev *fetch.RequestPausedReply,
+	mut *executor.RequestMutation,
+	matches []domain.RuleMatch,
+	isMatched bool,
+	traceID string,
+) {
+	original := h.captureRequestData(ev)
+	finalRequest := original
+	if mut != nil {
+		finalRequest = h.captureModifiedRequestData(original, mut)
+	}
+
+	h.pendingPool.Store(ev.RequestID, &PendingRequest{
+		TraceID:      traceID,
+		StartTime:    time.Now(),
+		RequestInfo:  finalRequest,
+		MatchedRules: matches,
+		IsMatched:    isMatched,
+	})
 }
 
 // HandleResponse 处理响应拦截
 func (h *Handler) HandleResponse(
+	client *cdp.Client,
 	ctx context.Context,
 	targetID domain.TargetID,
-	client *cdp.Client,
 	ev *fetch.RequestPausedReply,
 	l logger.Logger,
+	traceID string,
 ) {
-	statusCode := 0
-	if ev.ResponseStatusCode != nil {
-		statusCode = *ev.ResponseStatusCode
+	// 1. 从池中检索关联的请求信息
+	val, ok := h.pendingPool.Load(ev.RequestID)
+	if !ok {
+		h.executor.ContinueResponse(ctx, client, ev)
+		return
 	}
-	l.Debug("开始处理响应拦截", "statusCode", statusCode)
+	pending := val.(*PendingRequest)
+	defer h.pendingPool.Delete(ev.RequestID)
 
+	start := pending.StartTime
+	l = l.With("traceID", pending.TraceID)
+
+	// 2. 无论是否匹配，强制采集响应体（满足用户完整性需求）
+	originalReqInfo := pending.RequestInfo
+	_, originalResInfo := h.captureResponseData(client, ctx, ev)
+
+	// 3. 计算并应用响应阶段的变更
 	evalCtx := h.buildEvalContext(ev)
-	if h.engine == nil {
-		h.sendUnmatchedResponseEvent(targetID, ev, statusCode)
-		h.executor.ContinueResponse(ctx, client, ev)
-		return
-	}
-
-	start := time.Now()
 	matchedRules := h.engine.EvalForStage(evalCtx, rulespec.StageResponse)
-	if len(matchedRules) == 0 {
-		h.sendUnmatchedResponseEvent(targetID, ev, statusCode)
-		h.executor.ContinueResponse(ctx, client, ev)
-		l.Debug("响应处理完成，无匹配规则", "duration", time.Since(start))
-		return
-	}
 
-	// 1. 捕获原始数据 (响应体)
-	originalReqInfo, originalResInfo := h.captureResponseData(client, ctx, ev)
-
-	// 2. 计算变更 (Mutation)
 	mutation, ruleMatches, finalBody := h.computeResponseMutation(ev, matchedRules, originalResInfo.Body)
 
-	// 3. 执行修改 (Execution)
 	var finalResult string
 	if mutation != nil && hasResponseMutation(mutation) {
 		if mutation.Body == nil && finalBody != "" {
@@ -159,10 +210,14 @@ func (h *Handler) HandleResponse(
 	} else {
 		h.executor.ContinueResponse(ctx, client, ev)
 		finalResult = "passed"
+		if pending.IsMatched {
+			finalResult = "matched"
+		}
 	}
 
-	// 4. 追踪与通知 (Tracking & Event)
-	h.emitResponseEvent(targetID, finalResult, ruleMatches, originalReqInfo, originalResInfo, mutation, finalBody, start, l)
+	// 4. 发送原子化全周期事件
+	allMatches := append(pending.MatchedRules, ruleMatches...)
+	h.emitResponseEvent(targetID, finalResult, allMatches, originalReqInfo, originalResInfo, mutation, finalBody, start, l)
 }
 
 // computeRequestMutation 计算请求阶段的所有变更
@@ -256,12 +311,13 @@ func (h *Handler) emitResponseEvent(
 	l logger.Logger,
 ) {
 	modifiedResInfo := originalRes
-	if result == "modified" && mut != nil {
+	// 只要有变更或匹配，且有 mutation 对象，就尝试渲染修改后的数据
+	if (result == "modified" || result == "matched") && mut != nil {
 		modifiedResInfo = h.captureModifiedResponseData(originalRes, mut, finalBody)
 	}
 
 	h.sendMatchedEvent(targetID, result, matches, originalReq, modifiedResInfo)
-	l.Debug("响应处理完成", "result", result, "duration", time.Since(start))
+	l.Debug("全周期处理完成", "result", result, "duration", time.Since(start))
 }
 
 // buildEvalContext 构造规则匹配上下文
@@ -314,7 +370,7 @@ func (h *Handler) buildEvalContext(ev *fetch.RequestPausedReply) *rules.EvalCont
 	}
 }
 
-// sendMatchedEvent 发送匹配事件
+// sendMatchedEvent 统一发送网络事件
 func (h *Handler) sendMatchedEvent(
 	targetID domain.TargetID,
 	finalResult string,
@@ -325,80 +381,19 @@ func (h *Handler) sendMatchedEvent(
 	if h.events == nil {
 		return
 	}
+
+	// 核心逻辑：是否有任何规则匹配
+	isMatched := len(matchedRules) > 0
+
 	evt := domain.NetworkEvent{
 		Session:      "", // 会在上层填充
 		Target:       targetID,
 		Timestamp:    time.Now().UnixMilli(),
-		IsMatched:    true,
+		IsMatched:    isMatched,
 		Request:      requestInfo,
 		Response:     responseInfo,
 		FinalResult:  finalResult,
 		MatchedRules: matchedRules,
-	}
-
-	select {
-	case h.events <- evt:
-	default:
-	}
-}
-
-// sendUnmatchedRequestEvent 发送未匹配的请求事件
-func (h *Handler) sendUnmatchedRequestEvent(targetID domain.TargetID, ev *fetch.RequestPausedReply) {
-	if h.events == nil {
-		return
-	}
-
-	requestInfo := domain.RequestInfo{
-		URL:          ev.Request.URL,
-		Method:       ev.Request.Method,
-		Headers:      make(map[string]string),
-		ResourceType: string(ev.ResourceType),
-	}
-	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
-	requestInfo.Body = protocol.GetRequestBody(ev)
-
-	evt := domain.NetworkEvent{
-		Target:    targetID,
-		Timestamp: time.Now().UnixMilli(),
-		IsMatched: false,
-		Request:   requestInfo,
-	}
-
-	select {
-	case h.events <- evt:
-	default:
-	}
-}
-
-// sendUnmatchedResponseEvent 发送未匹配的响应事件
-func (h *Handler) sendUnmatchedResponseEvent(targetID domain.TargetID, ev *fetch.RequestPausedReply, statusCode int) {
-	if h.events == nil {
-		return
-	}
-
-	requestInfo := domain.RequestInfo{
-		URL:          ev.Request.URL,
-		Method:       ev.Request.Method,
-		Headers:      make(map[string]string),
-		ResourceType: string(ev.ResourceType),
-	}
-	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
-	requestInfo.Body = protocol.GetRequestBody(ev)
-
-	responseInfo := domain.ResponseInfo{
-		StatusCode: statusCode,
-		Headers:    make(map[string]string),
-	}
-	for _, h := range ev.ResponseHeaders {
-		responseInfo.Headers[h.Name] = h.Value
-	}
-
-	evt := domain.NetworkEvent{
-		Target:    targetID,
-		Timestamp: time.Now().UnixMilli(),
-		IsMatched: false,
-		Request:   requestInfo,
-		Response:  responseInfo,
 	}
 
 	select {

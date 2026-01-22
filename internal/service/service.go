@@ -111,9 +111,9 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 
 		// 3. 根据阶段分发处理
 		if ev.ResponseStatusCode == nil {
-			h.HandleRequest(ctx, targetID, client, ev, l)
+			h.HandleRequest(ctx, targetID, client, ev, l, traceID)
 		} else {
-			h.HandleResponse(ctx, targetID, client, ev, l)
+			h.HandleResponse(client, ctx, targetID, ev, l, traceID)
 		}
 	}
 	intr := interceptor.New(intrHandler, s.log)
@@ -372,4 +372,19 @@ func (s *svc) SubscribeEvents(ctx context.Context, id domain.SessionID) (<-chan 
 		return nil, domain.ErrSessionNotFound
 	}
 	return ses.events, nil
+}
+
+// SetCollectionMode 设置是否采集未匹配的请求
+func (s *svc) SetCollectionMode(ctx context.Context, id domain.SessionID, enabled bool) error {
+	s.mu.Lock()
+	ses, ok := s.sessions[id]
+	s.mu.Unlock()
+	if !ok {
+		return domain.ErrSessionNotFound
+	}
+	if ses.h != nil {
+		ses.h.SetCollectUnmatched(enabled)
+	}
+	s.log.Info("更新采集模式", "session", string(id), "enabled", enabled)
+	return nil
 }
