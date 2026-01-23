@@ -405,7 +405,7 @@ function App() {
 
       {/* 底部状态栏 */}
       <div className="h-6 border-t px-4 flex items-center text-xs text-muted-foreground shrink-0">
-        <span>cdpnetool v1.0.0</span>
+        <span>cdpnetool v1.1.0</span>
         <span className="mx-2">|</span>
         <span>Session: {sessionId?.slice(0, 8) || '-'}</span>
       </div>
