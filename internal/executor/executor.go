@@ -115,6 +115,18 @@ func (e *Executor) ExecuteRequestActions(actions []rulespec.Action, ev *fetch.Re
 				mut.Body = &currentBody
 			}
 
+		case rulespec.ActionAppendBody:
+			if v, ok := action.Value.(string); ok {
+				appendText := v
+				if action.GetEncoding() == rulespec.BodyEncodingBase64 {
+					if decoded, err := base64.StdEncoding.DecodeString(v); err == nil {
+						appendText = string(decoded)
+					}
+				}
+				currentBody = currentBody + appendText
+				mut.Body = &currentBody
+			}
+
 		case rulespec.ActionReplaceBodyText:
 			if action.ReplaceAll {
 				currentBody = strings.ReplaceAll(currentBody, action.Search, action.Replace)
@@ -200,6 +212,18 @@ func (e *Executor) ExecuteResponseActions(actions []rulespec.Action, ev *fetch.R
 					}
 				}
 				currentBody = body
+				mut.Body = &currentBody
+			}
+
+		case rulespec.ActionAppendBody:
+			if v, ok := action.Value.(string); ok {
+				appendText := v
+				if action.GetEncoding() == rulespec.BodyEncodingBase64 {
+					if decoded, err := base64.StdEncoding.DecodeString(v); err == nil {
+						appendText = string(decoded)
+					}
+				}
+				currentBody = currentBody + appendText
 				mut.Body = &currentBody
 			}
 
