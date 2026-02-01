@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"cdpnetool/internal/logger"
-	"cdpnetool/internal/orchestrator"
+	"cdpnetool/internal/service"
 	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
 )
@@ -51,5 +51,5 @@ type Service interface {
 // NewService 创建并返回服务接口实现
 func NewService(l logger.Logger) Service {
 	// 切换到新重构的编排器架构
-	return orchestrator.New(l)
+	return service.New(l)
 }
