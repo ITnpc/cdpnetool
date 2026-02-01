@@ -1,17 +1,17 @@
-package audit_test
+package auditor_test
 
 import (
 	"testing"
 	"time"
 
-	"cdpnetool/internal/audit"
+	"cdpnetool/internal/auditor"
 	"cdpnetool/internal/logger"
 	"cdpnetool/pkg/domain"
 )
 
 func TestNew(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
+	aud := auditor.New(events, logger.NewNop())
 	if aud == nil {
 		t.Error("New() returned nil")
 	}
@@ -19,7 +19,7 @@ func TestNew(t *testing.T) {
 
 func TestNew_NilLogger(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, nil)
+	aud := auditor.New(events, nil)
 	if aud == nil {
 		t.Error("New() returned nil")
 	}
@@ -27,7 +27,7 @@ func TestNew_NilLogger(t *testing.T) {
 
 func TestSetEnabled(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
+	aud := auditor.New(events, logger.NewNop())
 
 	aud.SetEnabled(false)
 	// 验证禁用后不记录事件
@@ -48,7 +48,7 @@ func TestSetEnabled(t *testing.T) {
 
 func TestRecord_Basic(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
+	aud := auditor.New(events, logger.NewNop())
 
 	req := &domain.Request{
 		ID:           "req1",
@@ -103,7 +103,7 @@ func TestRecord_Basic(t *testing.T) {
 
 func TestRecord_NilRequest(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
+	aud := auditor.New(events, logger.NewNop())
 
 	aud.Record("session1", "target1", nil, nil, "passed", nil)
 
@@ -117,7 +117,7 @@ func TestRecord_NilRequest(t *testing.T) {
 
 func TestRecord_NilResponse(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
+	aud := auditor.New(events, logger.NewNop())
 
 	req := &domain.Request{
 		ID:     "req1",
@@ -143,7 +143,7 @@ func TestRecord_NilResponse(t *testing.T) {
 
 func TestRecord_NoMatchedRules(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
+	aud := auditor.New(events, logger.NewNop())
 
 	req := &domain.Request{
 		ID:     "req1",
@@ -168,7 +168,7 @@ func TestRecord_NoMatchedRules(t *testing.T) {
 
 func TestDispatch_FullChannel(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 1)
-	aud := audit.New(events, logger.NewNop())
+	aud := auditor.New(events, logger.NewNop())
 
 	req1 := &domain.Request{
 		ID:     "req1",
@@ -206,7 +206,7 @@ func TestDispatch_FullChannel(t *testing.T) {
 }
 
 func TestDispatch_NilChannel(t *testing.T) {
-	aud := audit.New(nil, logger.NewNop())
+	aud := auditor.New(nil, logger.NewNop())
 
 	req := &domain.Request{
 		ID:     "req1",
@@ -220,7 +220,7 @@ func TestDispatch_NilChannel(t *testing.T) {
 
 func TestRecord_MultipleEvents(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
+	aud := auditor.New(events, logger.NewNop())
 
 	for i := 0; i < 3; i++ {
 		req := &domain.Request{

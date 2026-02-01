@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"cdpnetool/internal/adapter/cdp"
-	"cdpnetool/internal/audit"
+	"cdpnetool/internal/auditor"
 	"cdpnetool/internal/engine"
 	"cdpnetool/internal/logger"
 	"cdpnetool/internal/pool"
@@ -29,8 +29,8 @@ type sessionState struct {
 	interceptor         *cdp.Interceptor
 	engine              *engine.Engine
 	tracker             *tracker.Tracker
-	matchedAuditor      *audit.Auditor
-	trafficAuditor      *audit.Auditor
+	matchedAuditor      *auditor.Auditor
+	trafficAuditor      *auditor.Auditor
 	processor           *processor.Processor
 	events              chan domain.NetworkEvent
 	trafficEvs          chan domain.NetworkEvent
@@ -77,8 +77,8 @@ func (o *Orchestrator) StartSession(ctx context.Context, cfg domain.SessionConfi
 
 	// 初始化各层组件
 	eng := engine.New(&rulespec.Config{})
-	matchedAud := audit.New(events, o.log)
-	trafficAud := audit.New(trafficChan, o.log)
+	matchedAud := auditor.New(events, o.log)
+	trafficAud := auditor.New(trafficChan, o.log)
 	trk := tracker.New(time.Duration(cfg.ProcessTimeoutMS)*time.Millisecond, o.log)
 	proc := processor.New(trk, eng, matchedAud, trafficAud, o.log)
 

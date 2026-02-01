@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"cdpnetool/internal/audit"
+	"cdpnetool/internal/auditor"
 	"cdpnetool/internal/engine"
 	"cdpnetool/internal/logger"
 	"cdpnetool/internal/processor"
@@ -23,8 +23,8 @@ func TestNew(t *testing.T) {
 
 	events := make(chan domain.NetworkEvent, 10)
 	trafficChan := make(chan domain.NetworkEvent, 10)
-	matchedAud := audit.New(events, logger.NewNop())
-	trafficAud := audit.New(trafficChan, logger.NewNop())
+	matchedAud := auditor.New(events, logger.NewNop())
+	trafficAud := auditor.New(trafficChan, logger.NewNop())
 
 	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 	if p == nil {
@@ -41,8 +41,8 @@ func TestProcessRequest_NoMatch(t *testing.T) {
 
 	events := make(chan domain.NetworkEvent, 10)
 	trafficChan := make(chan domain.NetworkEvent, 10)
-	matchedAud := audit.New(events, logger.NewNop())
-	trafficAud := audit.New(trafficChan, logger.NewNop())
+	matchedAud := auditor.New(events, logger.NewNop())
+	trafficAud := auditor.New(trafficChan, logger.NewNop())
 	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	req := &domain.Request{
@@ -66,8 +66,8 @@ func TestProcessRequest_Block(t *testing.T) {
 
 	events := make(chan domain.NetworkEvent, 10)
 	trafficChan := make(chan domain.NetworkEvent, 10)
-	matchedAud := audit.New(events, logger.NewNop())
-	trafficAud := audit.New(trafficChan, logger.NewNop())
+	matchedAud := auditor.New(events, logger.NewNop())
+	trafficAud := auditor.New(trafficChan, logger.NewNop())
 	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	// 添加拦截规则
@@ -115,8 +115,8 @@ func TestProcessRequest_ModifyHeader(t *testing.T) {
 
 	events := make(chan domain.NetworkEvent, 10)
 	trafficChan := make(chan domain.NetworkEvent, 10)
-	matchedAud := audit.New(events, logger.NewNop())
-	trafficAud := audit.New(trafficChan, logger.NewNop())
+	matchedAud := auditor.New(events, logger.NewNop())
+	trafficAud := auditor.New(trafficChan, logger.NewNop())
 	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	rule := rulespec.Rule{
@@ -164,8 +164,8 @@ func TestProcessRequest_ModifyURL(t *testing.T) {
 
 	events := make(chan domain.NetworkEvent, 10)
 	trafficChan := make(chan domain.NetworkEvent, 10)
-	matchedAud := audit.New(events, logger.NewNop())
-	trafficAud := audit.New(trafficChan, logger.NewNop())
+	matchedAud := auditor.New(events, logger.NewNop())
+	trafficAud := auditor.New(trafficChan, logger.NewNop())
 	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	rule := rulespec.Rule{
@@ -209,8 +209,8 @@ func TestProcessResponse_NoMatch(t *testing.T) {
 
 	events := make(chan domain.NetworkEvent, 10)
 	trafficChan := make(chan domain.NetworkEvent, 10)
-	matchedAud := audit.New(events, logger.NewNop())
-	trafficAud := audit.New(trafficChan, logger.NewNop())
+	matchedAud := auditor.New(events, logger.NewNop())
+	trafficAud := auditor.New(trafficChan, logger.NewNop())
 	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	result := p.ProcessResponse(context.Background(), "req1", &domain.Response{})
@@ -228,8 +228,8 @@ func TestProcessResponse_ModifyStatus(t *testing.T) {
 
 	events := make(chan domain.NetworkEvent, 10)
 	trafficChan := make(chan domain.NetworkEvent, 10)
-	matchedAud := audit.New(events, logger.NewNop())
-	trafficAud := audit.New(trafficChan, logger.NewNop())
+	matchedAud := auditor.New(events, logger.NewNop())
+	trafficAud := auditor.New(trafficChan, logger.NewNop())
 	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	rule := rulespec.Rule{
@@ -285,8 +285,8 @@ func TestProcessResponse_ModifyHeader(t *testing.T) {
 
 	events := make(chan domain.NetworkEvent, 10)
 	trafficChan := make(chan domain.NetworkEvent, 10)
-	matchedAud := audit.New(events, logger.NewNop())
-	trafficAud := audit.New(trafficChan, logger.NewNop())
+	matchedAud := auditor.New(events, logger.NewNop())
+	trafficAud := auditor.New(trafficChan, logger.NewNop())
 	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	rule := rulespec.Rule{

@@ -3,7 +3,7 @@ package processor
 import (
 	"context"
 
-	"cdpnetool/internal/audit"
+	"cdpnetool/internal/auditor"
 	"cdpnetool/internal/engine"
 	"cdpnetool/internal/logger"
 	"cdpnetool/internal/tracker"
@@ -39,15 +39,15 @@ type PendingState struct {
 type Processor struct {
 	tracker        *tracker.Tracker
 	engine         *engine.Engine
-	matchedAuditor *audit.Auditor // 匹配事件审计器
-	trafficAuditor *audit.Auditor // 全量流量审计器
+	matchedAuditor *auditor.Auditor // 匹配事件审计器
+	trafficAuditor *auditor.Auditor // 全量流量审计器
 	log            logger.Logger
 	sessionID      string // 会话ID
 	targetID       string // 目标ID
 }
 
 // New 创建一个新的处理器
-func New(t *tracker.Tracker, e *engine.Engine, matchedAud, trafficAud *audit.Auditor, l logger.Logger) *Processor {
+func New(t *tracker.Tracker, e *engine.Engine, matchedAud, trafficAud *auditor.Auditor, l logger.Logger) *Processor {
 	if l == nil {
 		l = logger.NewNop()
 	}
