@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { domain } from '@/../wailsjs/go/models'
+import { useTranslation } from 'react-i18next'
 
 interface TargetsPanelProps {
   targets: domain.TargetInfo[]
@@ -14,10 +15,12 @@ export function TargetsPanel({
   onToggle,
   isConnected 
 }: TargetsPanelProps) {
+  const { t } = useTranslation()
+
   if (!isConnected) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
-        请先连接到浏览器
+        {t('targets.connectFirst')}
       </div>
     )
   }
@@ -25,7 +28,7 @@ export function TargetsPanel({
   if (targets.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
-        没有找到页面目标，点击刷新按钮重试
+        {t('targets.noTargets')}
       </div>
     )
   }
@@ -46,7 +49,7 @@ export function TargetsPanel({
             size="sm"
             onClick={() => onToggle(target.id)}
           >
-            {attachedTargetId === target.id ? '已附加' : '附加'}
+            {attachedTargetId === target.id ? t('targets.attached') : t('targets.attach')}
           </Button>
         </div>
       ))}

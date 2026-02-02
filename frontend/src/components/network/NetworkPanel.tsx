@@ -11,6 +11,7 @@ import {
   Square
 } from 'lucide-react'
 import type { NetworkEvent, Response as TrafficResponse, Request as TrafficRequest } from '@/types/events'
+import { useTranslation } from 'react-i18next'
 
 interface NetworkPanelProps {
   events: NetworkEvent[]
@@ -27,6 +28,7 @@ export function NetworkPanel({
   onClear,
   isConnected
 }: NetworkPanelProps) {
+  const { t } = useTranslation()
   const [search, setSearch] = useState('')
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null)
 
@@ -52,14 +54,14 @@ export function NetworkPanel({
             className="h-8"
           >
             {isCapturing ? (
-              <><Square className="w-3 h-3 mr-1.5 fill-current" /> 停止捕获</>
+              <><Square className="w-3 h-3 mr-1.5 fill-current" /> {t('network.stopCapture')}</>
             ) : (
-              <><Play className="w-3 h-3 mr-1.5 fill-current" /> 开始捕获</>
+              <><Play className="w-3 h-3 mr-1.5 fill-current" /> {t('network.startCapture')}</>
             )}
           </Button>
           <Button variant="outline" size="sm" onClick={onClear} className="h-8">
             <Trash2 className="w-4 h-4 mr-1.5" />
-            清空
+            {t('events.clear')}
           </Button>
         </div>
 
@@ -68,7 +70,7 @@ export function NetworkPanel({
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="过滤 URL、方法..."
+            placeholder={t('network.searchPlaceholder')}
             className="h-8 pl-9 pr-8"
           />
           {search && (
@@ -83,19 +85,19 @@ export function NetworkPanel({
 
         <div className="text-xs text-muted-foreground">
           {isCapturing && <span className="flex items-center gap-1.5 text-red-500 animate-pulse mr-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> 正在录制
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {t('rules.running')}
           </span>}
-          共 {events.length} 个请求
+          {t('rules.ruleCount', { count: events.length })}
         </div>
       </div>
 
       {/* 列表头部 */}
       <div className="grid grid-cols-[80px_80px_1fr_80px_100px] gap-2 px-3 py-2 border-b text-[11px] font-bold text-muted-foreground uppercase bg-muted/30">
-        <div>方法</div>
-        <div>状态</div>
+        <div>Method</div>
+        <div>Status</div>
         <div>URL</div>
-        <div>大小</div>
-        <div>时间</div>
+        <div>Size</div>
+        <div>Time</div>
       </div>
 
       <ScrollArea className="flex-1">
@@ -103,7 +105,7 @@ export function NetworkPanel({
           {filteredEvents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
               <Activity className="w-10 h-10 mb-4 opacity-20" />
-              <p>{isConnected ? (isCapturing ? "等待网络活动..." : "点击“开始捕获”查看流量") : "请先连接浏览器"}</p>
+              <p>{isConnected ? (isCapturing ? t('network.waiting') : t('network.clickToStart')) : t('targets.connectFirst')}</p>
             </div>
           ) : (
             filteredEvents.map((evt) => (
@@ -130,7 +132,7 @@ function TrafficItem({ event, isExpanded, onToggleExpand }: { event: NetworkEven
   ) : 'text-muted-foreground animate-pulse'
 
   const formatTime = (ts: number) => {
-    return new Date(ts).toLocaleTimeString('zh-CN', { hour12: false })
+    return new Date(ts).toLocaleTimeString(undefined, { hour12: false })
   }
 
   return (
@@ -163,17 +165,18 @@ function TrafficItem({ event, isExpanded, onToggleExpand }: { event: NetworkEven
 }
 
 function TrafficDetailView({ request, response }: { request: TrafficRequest, response?: TrafficResponse }) {
+  const { t } = useTranslation()
   return (
     <div className="space-y-6">
       <section>
-        <h4 className="text-[11px] font-bold text-muted-foreground uppercase mb-2">请求详情</h4>
+        <h4 className="text-[11px] font-bold text-muted-foreground uppercase mb-2">{t('events.sections.request')}</h4>
         <div className="space-y-1 text-xs font-mono">
           <div className="flex gap-2">
             <span className="text-muted-foreground w-24 shrink-0">URL:</span>
             <span className="break-all">{request.url}</span>
           </div>
           <div className="flex gap-2 pt-2">
-            <span className="text-muted-foreground w-24 shrink-0">请求头:</span>
+            <span className="text-muted-foreground w-24 shrink-0">{t('events.sections.request')}:</span>
             <div className="space-y-0.5 border-l-2 pl-3">
               {Object.entries(request.headers).map(([k, v]) => (
                 <div key={k}><span className="text-primary font-bold">{k}:</span> {v}</div>
@@ -191,14 +194,14 @@ function TrafficDetailView({ request, response }: { request: TrafficRequest, res
 
       {response && (
         <section>
-          <h4 className="text-[11px] font-bold text-muted-foreground uppercase mb-2">响应详情</h4>
+          <h4 className="text-[11px] font-bold text-muted-foreground uppercase mb-2">{t('events.sections.response')}</h4>
           <div className="space-y-1 text-xs font-mono">
             <div className="flex gap-2">
-              <span className="text-muted-foreground w-24 shrink-0">状态码:</span>
+              <span className="text-muted-foreground w-24 shrink-0">Status Code:</span>
               <span className="font-bold">{response.statusCode}</span>
             </div>
             <div className="flex gap-2 pt-2">
-              <span className="text-muted-foreground w-24 shrink-0">响应头:</span>
+              <span className="text-muted-foreground w-24 shrink-0">{t('events.sections.response')}:</span>
               <div className="space-y-0.5 border-l-2 pl-3">
                 {Object.entries(response.headers).map(([k, v]) => (
                   <div key={k}><span className="text-primary font-bold">{k}:</span> {v}</div>

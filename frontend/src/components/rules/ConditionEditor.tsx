@@ -12,6 +12,7 @@ import {
   createEmptyCondition,
   getConditionFields
 } from '@/types/rules'
+import { useTranslation } from 'react-i18next'
 
 interface ConditionEditorProps {
   condition: Condition
@@ -37,6 +38,7 @@ const conditionTypeOptions: { value: ConditionType; label: string }[] = [
 ]
 
 export function ConditionEditor({ condition, onChange, onRemove }: ConditionEditorProps) {
+  const { t } = useTranslation()
   const handleTypeChange = (newType: ConditionType) => {
     onChange(createEmptyCondition(newType))
   }
@@ -46,6 +48,20 @@ export function ConditionEditor({ condition, onChange, onRemove }: ConditionEdit
   }
 
   const fields = getConditionFields(condition.type)
+
+  const getNamePlaceholder = (type: ConditionType): string => {
+    if (type.startsWith('header')) return t('rules.headerName')
+    if (type.startsWith('query')) return t('rules.queryName')
+    if (type.startsWith('cookie')) return t('rules.cookieName')
+    return 'Name'
+  }
+
+  const getValuePlaceholder = (type: ConditionType): string => {
+    if (type.startsWith('url')) return 'URL...'
+    if (type === 'bodyContains') return t('rules.text')
+    if (type === 'bodyJsonPath') return t('rules.expected')
+    return 'Value...'
+  }
 
   return (
     <div className="flex items-start gap-2 p-3 rounded-lg border bg-card">
@@ -59,7 +75,63 @@ export function ConditionEditor({ condition, onChange, onRemove }: ConditionEdit
 
       {/* 根据条件类型渲染字段 */}
       <div className="flex-1 flex items-center gap-2 flex-wrap">
-        {renderConditionFields(condition, fields, updateField)}
+        {/* name 字段 */}
+        {fields.includes('name') && (
+          <Input
+            value={condition.name || ''}
+            onChange={(e) => updateField('name', e.target.value)}
+            placeholder={getNamePlaceholder(condition.type)}
+            className="w-32"
+          />
+        )}
+
+        {/* path 字段 (bodyJsonPath) */}
+        {fields.includes('path') && (
+          <Input
+            value={condition.path || ''}
+            onChange={(e) => updateField('path', e.target.value)}
+            placeholder="$.data.status"
+            className="w-40"
+          />
+        )}
+
+        {/* value 字段 */}
+        {fields.includes('value') && (
+          <Input
+            value={condition.value || ''}
+            onChange={(e) => updateField('value', e.target.value)}
+            placeholder={getValuePlaceholder(condition.type)}
+            className="flex-1 min-w-[150px]"
+          />
+        )}
+
+        {/* pattern 字段 */}
+        {fields.includes('pattern') && (
+          <Input
+            value={condition.pattern || ''}
+            onChange={(e) => updateField('pattern', e.target.value)}
+            placeholder={t('rules.regex')}
+            className="flex-1 min-w-[150px]"
+          />
+        )}
+
+        {/* Method 多选 */}
+        {condition.type === 'method' && (
+          <MultiValueSelector
+            values={condition.values || []}
+            options={[...HTTP_METHODS]}
+            onChange={(values) => updateField('values', values)}
+          />
+        )}
+
+        {/* ResourceType 多选 */}
+        {condition.type === 'resourceType' && (
+          <MultiValueSelector
+            values={condition.values || []}
+            options={[...RESOURCE_TYPES]}
+            onChange={(values) => updateField('values', values)}
+          />
+        )}
       </div>
 
       {/* 删除按钮 */}
@@ -68,98 +140,6 @@ export function ConditionEditor({ condition, onChange, onRemove }: ConditionEdit
       </Button>
     </div>
   )
-}
-
-// 渲染条件字段
-function renderConditionFields(
-  condition: Condition,
-  fields: ReturnType<typeof getConditionFields>,
-  updateField: <K extends keyof Condition>(key: K, value: Condition[K]) => void
-) {
-  const { type } = condition
-
-  // Method 多选
-  if (type === 'method') {
-    return (
-      <MultiValueSelector
-        values={condition.values || []}
-        options={[...HTTP_METHODS]}
-        onChange={(values) => updateField('values', values)}
-      />
-    )
-  }
-
-  // ResourceType 多选
-  if (type === 'resourceType') {
-    return (
-      <MultiValueSelector
-        values={condition.values || []}
-        options={[...RESOURCE_TYPES]}
-        onChange={(values) => updateField('values', values)}
-      />
-    )
-  }
-
-  // 其他条件类型
-  return (
-    <>
-      {/* name 字段 */}
-      {fields.includes('name') && (
-        <Input
-          value={condition.name || ''}
-          onChange={(e) => updateField('name', e.target.value)}
-          placeholder={getNamePlaceholder(type)}
-          className="w-32"
-        />
-      )}
-
-      {/* path 字段 (bodyJsonPath) */}
-      {fields.includes('path') && (
-        <Input
-          value={condition.path || ''}
-          onChange={(e) => updateField('path', e.target.value)}
-          placeholder="$.data.status"
-          className="w-40"
-        />
-      )}
-
-      {/* value 字段 */}
-      {fields.includes('value') && (
-        <Input
-          value={condition.value || ''}
-          onChange={(e) => updateField('value', e.target.value)}
-          placeholder={getValuePlaceholder(type)}
-          className="flex-1 min-w-[150px]"
-        />
-      )}
-
-      {/* pattern 字段 */}
-      {fields.includes('pattern') && (
-        <Input
-          value={condition.pattern || ''}
-          onChange={(e) => updateField('pattern', e.target.value)}
-          placeholder="正则表达式..."
-          className="flex-1 min-w-[150px]"
-        />
-      )}
-    </>
-  )
-}
-
-// 获取 name 字段占位符
-function getNamePlaceholder(type: ConditionType): string {
-  if (type.startsWith('header')) return 'Header 名'
-  if (type.startsWith('query')) return '参数名'
-  if (type.startsWith('cookie')) return 'Cookie 名'
-  return '名称'
-}
-
-// 获取 value 字段占位符
-function getValuePlaceholder(type: ConditionType): string {
-  if (type.startsWith('url')) return 'URL...'
-  if (type === 'bodyContains') return '包含的文本...'
-  if (type === 'bodyJsonPath') return '期望值'
-  return '值...'
 }
 
 // 多值选择器组件
@@ -206,6 +186,7 @@ interface ConditionGroupProps {
 }
 
 export function ConditionGroup({ title, description, conditions, onChange }: ConditionGroupProps) {
+  const { t } = useTranslation()
   const addCondition = () => {
     onChange([...conditions, createEmptyCondition('urlPrefix')])
   }
@@ -229,13 +210,13 @@ export function ConditionGroup({ title, description, conditions, onChange }: Con
         </div>
         <Button variant="outline" size="sm" onClick={addCondition}>
           <Plus className="w-4 h-4 mr-1" />
-          添加条件
+          {t('rules.addCondition')}
         </Button>
       </div>
 
       {conditions.length === 0 ? (
         <div className="text-sm text-muted-foreground p-3 border rounded-lg border-dashed text-center">
-          暂无条件，点击上方按钮添加
+          {t('rules.noConditions')}
         </div>
       ) : (
         <div className="space-y-2">

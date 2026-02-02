@@ -10,6 +10,7 @@ import { NetworkPanel } from '@/components/network/NetworkPanel'
 import { TargetsPanel } from '@/components/targets/TargetsPanel'
 import { RulesPanel } from '@/components/rules/RulesPanel'
 import { api } from '@/api'
+import { useTranslation } from 'react-i18next'
 import { 
   RefreshCw, 
   Moon, 
@@ -19,9 +20,11 @@ import {
   FileJson,
   Activity,
   Chrome,
+  Languages
 } from 'lucide-react'
 
 function App() {
+  const { t } = useTranslation()
   const { 
     devToolsURL, 
     setDevToolsURL, 
@@ -43,6 +46,8 @@ function App() {
     resetSession,
     refreshTargets,
     toggleTarget,
+    language,
+    setLanguage
   } = useSessionStore()
   
   const { isDark, toggle: toggleTheme } = useThemeStore()
@@ -75,20 +80,20 @@ function App() {
         setDevToolsURL(result.data.devToolsUrl)
         toast({
           variant: 'success',
-          title: '浏览器已启动',
+          title: t('toolbar.launchBrowser'),
           description: `DevTools URL: ${result.data.devToolsUrl}`,
         })
       } else {
         toast({
           variant: 'destructive',
-          title: '启动失败',
-          description: result?.message || '无法启动浏览器',
+          title: t('common.loading'),
+          description: result?.message || 'Error',
         })
       }
     } catch (e) {
       toast({
         variant: 'destructive',
-        title: '启动错误',
+        title: 'Error',
         description: String(e),
       })
     } finally {
@@ -105,12 +110,12 @@ function App() {
           setConnected(false)
           setCurrentSession(null)
           resetSession()
-          toast({ variant: 'success', title: '已断开连接' })
+          toast({ variant: 'success', title: t('common.disconnect') })
         } else {
-          toast({ variant: 'destructive', title: '断开失败', description: result?.message })
+          toast({ variant: 'destructive', title: 'Error', description: result?.message })
         }
       } catch (e) {
-        toast({ variant: 'destructive', title: '断开错误', description: String(e) })
+        toast({ variant: 'destructive', title: 'Error', description: String(e) })
       }
     } else {
       setIsLoading(true)
@@ -121,26 +126,36 @@ function App() {
           setConnected(true)
           toast({
             variant: 'success',
-            title: '连接成功',
-            description: `会话 ID: ${result.data.sessionId.slice(0, 8)}...`,
+            title: t('common.connected'),
+            description: `ID: ${result.data.sessionId.slice(0, 8)}...`,
           })
           await refreshTargets()
         } else {
-          toast({ variant: 'destructive', title: '连接失败', description: result?.message || '连接失败' })
+          toast({ variant: 'destructive', title: 'Error', description: result?.message || 'Failed' })
         }
       } catch (e) {
-        toast({ variant: 'destructive', title: '连接错误', description: String(e) })
+        toast({ variant: 'destructive', title: 'Error', description: String(e) })
       } finally {
         setIsLoading(false)
       }
     }
   }
 
+  // 切换语言
+  const handleToggleLanguage = () => {
+    const nextLang = language === 'zh' ? 'en' : 'zh'
+    setLanguage(nextLang)
+    toast({
+      title: t('toolbar.toggleLanguage'),
+      description: nextLang === 'zh' ? '中文' : 'English',
+    })
+  }
+
   // 切换目标处理
   const handleToggleTarget = async (targetId: string) => {
     const result = await toggleTarget(targetId)
     if (!result.success) {
-      toast({ variant: 'destructive', title: '操作失败', description: result.message })
+      toast({ variant: 'destructive', title: 'Error', description: result.message })
     }
   }
 
@@ -153,14 +168,13 @@ function App() {
         setTrafficCapturing(enabled)
         toast({ 
           variant: enabled ? 'success' : 'default',
-          title: enabled ? '开启捕获' : '停止捕获',
-          description: enabled ? '现在将记录所有网络请求' : '已停止全量请求记录'
+          title: enabled ? 'Start Capture' : 'Stop Capture',
         })
       } else {
-        toast({ variant: 'destructive', title: '操作失败', description: result?.message })
+        toast({ variant: 'destructive', title: 'Error', description: result?.message })
       }
     } catch (e) {
-      toast({ variant: 'destructive', title: '操作错误', description: String(e) })
+      toast({ variant: 'destructive', title: 'Error', description: String(e) })
     }
   }
 
@@ -189,15 +203,15 @@ function App() {
             onClick={handleLaunchBrowser}
             variant="outline"
             disabled={isLaunchingBrowser || isConnected}
-            title="启动新浏览器实例"
+            title={t('toolbar.launchBrowser')}
           >
             <Chrome className="w-4 h-4 mr-2" />
-            {isLaunchingBrowser ? '启动中...' : '启动浏览器'}
+            {isLaunchingBrowser ? t('toolbar.launching') : t('toolbar.launchBrowser')}
           </Button>
           <Input
             value={devToolsURL}
             onChange={(e) => setDevToolsURL(e.target.value)}
-            placeholder="DevTools URL (e.g., http://localhost:9222)"
+            placeholder={t('toolbar.devtoolsUrlPlaceholder')}
             className="w-80"
             disabled={isConnected}
           />
@@ -207,7 +221,7 @@ function App() {
             disabled={isLoading}
           >
             {isConnected ? <Link2Off className="w-4 h-4 mr-2" /> : <Link2 className="w-4 h-4 mr-2" />}
-            {isLoading ? '连接中...' : isConnected ? '断开' : '连接'}
+            {isLoading ? t('common.connecting') : isConnected ? t('common.disconnect') : t('common.connect')}
           </Button>
         </div>
         
@@ -217,22 +231,25 @@ function App() {
             size="icon"
             onClick={() => refreshTargets()}
             disabled={!isConnected}
-            title="刷新目标列表"
+            title={t('toolbar.refreshTargets')}
           >
             <RefreshCw className="w-4 h-4" />
           </Button>
           <div className="flex items-center gap-2 text-sm">
             <span className={`flex items-center gap-1 ${isConnected ? 'text-green-500' : 'text-muted-foreground'}`}>
               <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-muted-foreground'}`} />
-              {isConnected ? '已连接' : '未连接'}
+              {isConnected ? t('common.connected') : t('common.notConnected')}
             </span>
             {isConnected && (
               <span className="text-muted-foreground">
-                · 目标 {attachedTargetId ? 1 : 0}/1
+                · {t('common.target')} {attachedTargetId ? 1 : 0}/1
               </span>
             )}
           </div>
-          <Button variant="ghost" size="icon" onClick={toggleTheme}>
+          <Button variant="ghost" size="icon" onClick={handleToggleLanguage} title={t('toolbar.toggleLanguage')}>
+            <Languages className="w-4 h-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={toggleTheme} title={t('toolbar.toggleTheme')}>
             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </Button>
         </div>
@@ -245,19 +262,19 @@ function App() {
             <TabsList className="h-10">
               <TabsTrigger value="targets" className="gap-2">
                 <Link2 className="w-4 h-4" />
-                Targets
+                {t('common.target')}
               </TabsTrigger>
               <TabsTrigger value="rules" className="gap-2">
                 <FileJson className="w-4 h-4" />
-                Rules
+                {t('common.rules')}
               </TabsTrigger>
               <TabsTrigger value="events" className="gap-2">
                 <Activity className="w-4 h-4" />
-                Events
+                {t('common.events')}
               </TabsTrigger>
               <TabsTrigger value="network" className="gap-2">
                 <Activity className="w-4 h-4" />
-                Network
+                {t('common.network')}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -274,12 +291,14 @@ function App() {
           </TabsContent>
 
           <TabsContent value="rules" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
-            <RulesPanel 
-              sessionId={sessionId}
-              isConnected={isConnected}
-              attachedTargetId={attachedTargetId}
-              setIntercepting={setIntercepting}
-            />
+            <div className="h-full overflow-hidden">
+              <RulesPanel 
+                sessionId={sessionId}
+                isConnected={isConnected}
+                attachedTargetId={attachedTargetId}
+                setIntercepting={setIntercepting}
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="events" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">

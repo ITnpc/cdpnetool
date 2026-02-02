@@ -5,6 +5,7 @@ import type {
 } from '@/types/events'
 import { api } from '@/api'
 import { domain } from '../../wailsjs/go/models'
+import i18n from '@/i18n'
 
 // Session 状态
 interface SessionState {
@@ -18,6 +19,7 @@ interface SessionState {
   matchedEvents: MatchedEventWithId[]    // 匹配的事件（会存入数据库）
   isTrafficCapturing: boolean           // 是否正在捕获全量流量
   trafficEvents: NetworkEvent[]         // 全量流量列表（仅内存，最近100条）
+  language: string                      // 当前语言
   
   // Actions
   setDevToolsURL: (url: string) => void
@@ -29,6 +31,7 @@ interface SessionState {
   setTargets: (targets: domain.TargetInfo[]) => void
   setAttachedTargetId: (targetId: string | null) => void
   resetSession: () => void
+  setLanguage: (lang: string) => void
   
   // 复杂业务 Actions
   refreshTargets: () => Promise<void>
@@ -58,6 +61,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   matchedEvents: [],
   isTrafficCapturing: false,
   trafficEvents: [],
+  language: 'zh',
   
   setDevToolsURL: (url) => set({ devToolsURL: url }),
   setCurrentSession: (id) => set({ currentSessionId: id }),
@@ -67,6 +71,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setActiveConfigId: (id) => set({ activeConfigId: id }),
   setTargets: (targets) => set({ targets }),
   setAttachedTargetId: (targetId) => set({ attachedTargetId: targetId }),
+  setLanguage: (lang) => {
+    i18n.changeLanguage(lang)
+    set({ language: lang })
+  },
 
   resetSession: () => set({
     attachedTargetId: null,

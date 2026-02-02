@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
 import { useSessionStore } from '@/stores'
 import { RuleListEditor } from './RuleEditor'
+import { useTranslation } from 'react-i18next'
 import { 
   FileJson, 
   Plus, 
@@ -20,7 +21,6 @@ import {
 import type { Rule, Config } from '@/types/rules'
 import { createEmptyConfig } from '@/types/rules'
 import { api } from '@/api'
-
 import { model } from '@/../wailsjs/go/models'
 
 interface RulesPanelProps {
@@ -31,6 +31,7 @@ interface RulesPanelProps {
 }
 
 export function RulesPanel({ sessionId, isConnected, attachedTargetId, setIntercepting }: RulesPanelProps) {
+  const { t } = useTranslation()
   const { toast } = useToast()
   const { activeConfigId, setActiveConfigId } = useSessionStore()
   const [ruleSet, setRuleSet] = useState<Config>(createEmptyConfig())
@@ -38,7 +39,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [ruleSets, setRuleSets] = useState<model.ConfigRecord[]>([])
   const [currentRuleSetId, setCurrentRuleSetId] = useState<number>(0)
-  const [currentRuleSetName, setCurrentRuleSetName] = useState<string>('默认配置')
+  const [currentRuleSetName, setCurrentRuleSetName] = useState<string>(t('rules.newConfig'))
   const [isLoading, setIsLoading] = useState(false)
   const [editingName, setEditingName] = useState<number | null>(null)
   const [newName, setNewName] = useState('')
@@ -145,21 +146,21 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     if (isDirty) {
       setConfirmDialog({
         show: true,
-        title: '未保存的更改',
-        message: '当前配置有未保存的更改，切换配置将丢失这些更改。',
-        confirmText: '不保存',
+        title: t('rules.unsavedChanges'),
+        message: t('rules.unsavedChanges'), // Simplified for now
+        confirmText: t('common.confirm'),
         showSaveOption: true,
         onConfirm: () => {
           loadRuleSetData(record)
           api.config.setActive(record.id)
-          toast({ variant: 'success', title: `已切换到配置: ${record.name}` })
+          toast({ variant: 'success', title: `${t('common.refresh')}: ${record.name}` })
           setConfirmDialog(null)
         },
         onSave: async () => {
           await handleSave()
           loadRuleSetData(record)
           await api.config.setActive(record.id)
-          toast({ variant: 'success', title: `已切换到配置: ${record.name}` })
+          toast({ variant: 'success', title: `${t('common.refresh')}: ${record.name}` })
           setConfirmDialog(null)
         }
       })
@@ -167,12 +168,12 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     }
     loadRuleSetData(record)
     await api.config.setActive(record.id)
-    toast({ variant: 'success', title: `已切换到配置: ${record.name}` })
+    toast({ variant: 'success', title: `${t('common.refresh')}: ${record.name}` })
   }
 
   const handleCreateRuleSet = async () => {
     try {
-      const result = await api.config.create('新配置')
+      const result = await api.config.create(t('rules.newConfig'))
       if (result?.success && result.data && result.data.config) {
         await loadRuleSets()
         const newConfig = JSON.parse(result.data.configJson) as Config
@@ -183,20 +184,20 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
         setJsonError(null)
         await api.config.setActive(result.data.config.id)
         updateDirty(false)
-        toast({ variant: 'success', title: '新配置已创建' })
+        toast({ variant: 'success', title: t('common.add') + ' Success' })
       } else {
-        toast({ variant: 'destructive', title: '创建失败', description: result?.message })
+        toast({ variant: 'destructive', title: t('common.add') + ' Error', description: result?.message })
       }
     } catch (e) {
-      toast({ variant: 'destructive', title: '创建失败', description: String(e) })
+      toast({ variant: 'destructive', title: t('common.add') + ' Error', description: String(e) })
     }
   }
 
   const handleDeleteCurrentConfig = async () => {
     setConfirmDialog({
       show: true,
-      title: '删除配置',
-      message: `确定要删除配置「${currentRuleSetName}」吗？此操作不可撤销。`,
+      title: t('common.delete'),
+      message: `${t('common.delete')} 「${currentRuleSetName}」?`,
       onConfirm: async () => {
         await handleDeleteConfig(currentRuleSetId)
         setConfirmDialog(null)
@@ -222,12 +223,12 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
             updateDirty(false)
           }
         }
-        toast({ variant: 'success', title: '配置已删除' })
+        toast({ variant: 'success', title: t('common.delete') + ' Success' })
       } else {
-        toast({ variant: 'destructive', title: '删除失败', description: result?.message })
+        toast({ variant: 'destructive', title: t('common.delete') + ' Error', description: result?.message })
       }
     } catch (e) {
-      toast({ variant: 'destructive', title: '删除失败', description: String(e) })
+      toast({ variant: 'destructive', title: t('common.delete') + ' Error', description: String(e) })
     }
   }
 
@@ -242,21 +243,21 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
         }
         setEditingName(null)
         setNewName('')
-        toast({ variant: 'success', title: '已重命名' })
+        toast({ variant: 'success', title: t('common.rename') + ' Success' })
       }
     } catch (e) {
-      toast({ variant: 'destructive', title: '重命名失败', description: String(e) })
+      toast({ variant: 'destructive', title: t('common.rename') + ' Error', description: String(e) })
     }
   }
 
   const handleToggleConfig = async (config: model.ConfigRecord, enabled: boolean) => {
     if (enabled) {
       if (!isConnected) {
-        toast({ variant: 'destructive', title: '请先连接到浏览器' })
+        toast({ variant: 'destructive', title: t('targets.connectFirst') })
         return
       }
       if (!attachedTargetId) {
-        toast({ variant: 'destructive', title: '请先在 Targets 标签页附加一个目标' })
+        toast({ variant: 'destructive', title: t('targets.title') + ' Required' })
         return
       }
       
@@ -264,13 +265,13 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
         const configJson = config.configJson || JSON.stringify({ version: '1.0', rules: [] })
         const loadResult = await api.session.loadRules(sessionId!, configJson)
         if (!loadResult?.success) {
-          toast({ variant: 'destructive', title: '加载规则失败', description: loadResult?.message })
+          toast({ variant: 'destructive', title: 'Error', description: loadResult?.message })
           return
         }
         
         const enableResult = await api.session.enableInterception(sessionId!)
         if (!enableResult?.success) {
-          toast({ variant: 'destructive', title: '启用拦截失败', description: enableResult?.message })
+          toast({ variant: 'destructive', title: 'Error', description: enableResult?.message })
           return
         }
         
@@ -278,9 +279,9 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
         setActiveConfigId(config.id)
         setIntercepting(true)
         await loadRuleSets()
-        toast({ variant: 'success', title: `配置「${config.name}」已启用` })
+        toast({ variant: 'success', title: `Config 「${config.name}」 ${t('rules.running')}` })
       } catch (e) {
-        toast({ variant: 'destructive', title: '启用失败', description: String(e) })
+        toast({ variant: 'destructive', title: 'Error', description: String(e) })
       }
     } else {
       try {
@@ -289,9 +290,9 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
         }
         setActiveConfigId(null)
         setIntercepting(false)
-        toast({ variant: 'success', title: '拦截已停止' })
+        toast({ variant: 'success', title: 'Stopped' })
       } catch (e) {
-        toast({ variant: 'destructive', title: '停止失败', description: String(e) })
+        toast({ variant: 'destructive', title: 'Error', description: String(e) })
       }
     }
   }
@@ -308,7 +309,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
 
   const handleAddRule = async () => {
     try {
-      const result = await api.config.generateRule('新规则', ruleSet.rules.length)
+      const result = await api.config.generateRule(t('rules.newRule') || 'New Rule', ruleSet.rules.length)
       if (result?.success && result.data) {
         const newRule = JSON.parse(result.data.ruleJson) as Rule
         setRuleSet({
@@ -317,12 +318,12 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
         })
         updateDirty(true)
       } else {
-        toast({ variant: 'destructive', title: '添加失败', description: result?.message })
+        toast({ variant: 'destructive', title: 'Error', description: result?.message })
       }
     } catch (e) {
       const fallbackRule: Rule = {
         id: crypto.randomUUID(),
-        name: '新规则',
+        name: 'New Rule',
         enabled: true,
         priority: 0,
         stage: 'request',
@@ -339,7 +340,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
 
   const handleSave = async () => {
     if (showJson && jsonError) {
-      toast({ variant: 'destructive', title: '无法保存', description: 'JSON 格式错误，请修正后再保存' })
+      toast({ variant: 'destructive', title: 'Error', description: 'JSON Error' })
       return
     }
     
@@ -353,7 +354,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
       const saveResult = await api.config.save(currentRuleSetId, configJson)
       
       if (!saveResult?.success) {
-        toast({ variant: 'destructive', title: '保存失败', description: saveResult?.message })
+        toast({ variant: 'destructive', title: 'Error', description: saveResult?.message })
         return
       }
       
@@ -366,12 +367,12 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
       
       if (currentRuleSetId === activeConfigId && sessionId) {
         await api.session.loadRules(sessionId, configJson)
-        toast({ variant: 'success', title: `已保存并更新 ${ruleSet.rules.length} 条规则` })
+        toast({ variant: 'success', title: `Saved & Updated` })
       } else {
-        toast({ variant: 'success', title: `已保存 ${ruleSet.rules.length} 条规则` })
+        toast({ variant: 'success', title: t('common.save') + ' Success' })
       }
     } catch (e) {
-      toast({ variant: 'destructive', title: '保存失败', description: String(e) })
+      toast({ variant: 'destructive', title: 'Error', description: String(e) })
     } finally {
       setIsLoading(false)
     }
@@ -381,9 +382,9 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     const json = JSON.stringify(ruleSet, null, 2)
     const result = await api.config.export(currentRuleSetName || "ruleset", json)
     if (result && !result.success) {
-      toast({ variant: 'destructive', title: '导出失败', description: result.message })
+      toast({ variant: 'destructive', title: 'Error', description: result.message })
     } else if (result && result.success) {
-      toast({ variant: 'success', title: '配置导出成功' })
+      toast({ variant: 'success', title: 'Success' })
     }
   }
 
@@ -398,12 +399,12 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
         if (imported.version && Array.isArray(imported.rules)) {
           setRuleSet(imported)
           updateDirty(true)
-          toast({ variant: 'success', title: `导入成功，共 ${imported.rules.length} 条规则（请点保存以持久化）` })
+          toast({ variant: 'success', title: 'Success' })
         } else {
-          toast({ variant: 'destructive', title: 'JSON 格式不正确' })
+          toast({ variant: 'destructive', title: 'Error' })
         }
       } catch {
-        toast({ variant: 'destructive', title: 'JSON 解析失败' })
+        toast({ variant: 'destructive', title: 'Error' })
       }
     }
     reader.readAsText(file)
@@ -415,16 +416,15 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
       {isInitializing ? (
         <div className="flex items-center justify-center w-full text-muted-foreground">
           <div className="text-center">
-            <div className="text-lg mb-2">加载中...</div>
-            <div className="text-sm">正在初始化配置编辑器</div>
+            <div className="text-lg mb-2">{t('common.loading')}</div>
           </div>
         </div>
       ) : (
         <>
           <div className="w-60 border-r flex flex-col shrink-0">
             <div className="p-3 border-b flex items-center justify-between">
-              <span className="font-medium text-sm">配置列表</span>
-              <Button size="sm" variant="ghost" onClick={handleCreateRuleSet} title="新建配置">
+              <span className="font-medium text-sm">{t('rules.listTitle')}</span>
+              <Button size="sm" variant="ghost" onClick={handleCreateRuleSet} title={t('common.add')}>
                 <Plus className="w-4 h-4" />
               </Button>
             </div>
@@ -463,8 +463,8 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                         <>
                           <div className="text-sm font-medium truncate">{config.name}</div>
                           <div className="text-xs text-muted-foreground">
-                            {getRuleCount(config)} 条规则
-                            {config.id === activeConfigId && <span className="ml-1 text-green-500">· 运行中</span>}
+                            {t('rules.ruleCount', { count: getRuleCount(config) })}
+                            {config.id === activeConfigId && <span className="ml-1 text-green-500">· {t('rules.running')}</span>}
                           </div>
                         </>
                       )}
@@ -479,8 +479,8 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
             {ruleSets.length === 0 ? (
               <div className="flex-1 flex items-center justify-center text-muted-foreground">
                 <div className="text-center">
-                  <div className="text-lg mb-2">暂无配置</div>
-                  <div className="text-sm mb-4">点击左侧「+」按钮创建第一个配置</div>
+                  <div className="text-lg mb-2">{t('rules.noConfigs')}</div>
+                  <div className="text-sm mb-4">{t('rules.createFirst')}</div>
                 </div>
               </div>
             ) : (
@@ -494,7 +494,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                       {configInfoExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       <span className="truncate max-w-48">{currentRuleSetName}</span>
                     </button>
-                    {isDirty && <span className="w-2 h-2 rounded-full bg-primary animate-pulse" title="有未保存更改" />}
+                    {isDirty && <span className="w-2 h-2 rounded-full bg-primary animate-pulse" title={t('rules.unsavedChanges')} />}
                     <div className="flex-1" />
                     <input
                       ref={fileInputRef}
@@ -505,26 +505,26 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                     />
                     <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                       <Upload className="w-4 h-4 mr-1" />
-                      导入
+                      {t('common.import')}
                     </Button>
                     <Button variant="outline" size="sm" onClick={handleExport}>
                       <Download className="w-4 h-4 mr-1" />
-                      导出
+                      {t('common.export')}
                     </Button>
                     <Button size="sm" onClick={handleSave} disabled={isLoading}>
                       <Save className="w-4 h-4 mr-1" />
-                      {isLoading ? '保存中...' : '保存'}
+                      {isLoading ? t('common.saving') : t('common.save')}
                     </Button>
                     <Button variant="destructive" size="sm" onClick={handleDeleteCurrentConfig}>
                       <Trash2 className="w-4 h-4 mr-1" />
-                      删除
+                      {t('common.delete')}
                     </Button>
                   </div>
                   
                   {configInfoExpanded && (
                     <div className="mt-3 space-y-3 pl-5">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground whitespace-nowrap w-16">名称:</span>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap w-16">Name:</span>
                         <Input
                           value={currentRuleSetName}
                           onChange={(e) => {
@@ -535,14 +535,14 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                         />
                       </div>
                       <div className="flex items-start gap-2">
-                        <span className="text-sm text-muted-foreground whitespace-nowrap w-16 pt-2">描述:</span>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap w-16 pt-2">Desc:</span>
                         <Textarea
                           value={ruleSet.description || ''}
                           onChange={(e) => {
                             setRuleSet({ ...ruleSet, description: e.target.value })
                             updateDirty(true)
                           }}
-                          placeholder="配置描述（可选）"
+                          placeholder="Description"
                           className="flex-1 min-h-[60px] max-w-md"
                         />
                       </div>
@@ -553,7 +553,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                 <div className="flex items-center gap-2 mb-4 shrink-0">
                   <Button onClick={handleAddRule} size="sm">
                     <Plus className="w-4 h-4 mr-1" />
-                    添加规则
+                    {t('rules.addRule')}
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => {
                     if (!showJson) {
@@ -563,11 +563,11 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                     setShowJson(!showJson)
                   }}>
                     <FileJson className="w-4 h-4 mr-1" />
-                    {showJson ? '可视化' : 'JSON'}
+                    {showJson ? t('rules.visual') : t('rules.json')}
                   </Button>
                   <div className="flex-1" />
                   <span className="text-xs text-muted-foreground">
-                    共 {ruleSet.rules.length} 条规则
+                    {t('rules.ruleCount', { count: ruleSet.rules.length })}
                   </span>
                 </div>
 
@@ -584,10 +584,10 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                               setRuleSet(parsed)
                               setJsonError(null)
                             } else {
-                              setJsonError('配置格式错误：缺少 rules 数组')
+                              setJsonError('Format error')
                             }
                           } catch (err) {
-                            setJsonError(`JSON 解析错误：${err instanceof Error ? err.message : String(err)}`)
+                            setJsonError('JSON Error')
                           }
                           updateDirty(true)
                         }}
@@ -622,15 +622,15 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
             <p className="text-muted-foreground mb-6">{confirmDialog.message}</p>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setConfirmDialog(null)}>
-                取消
+                {t('common.cancel')}
               </Button>
               {confirmDialog.showSaveOption && confirmDialog.onSave && (
                 <Button variant="default" onClick={confirmDialog.onSave}>
-                  保存
+                  {t('common.save')}
                 </Button>
               )}
               <Button variant="destructive" onClick={confirmDialog.onConfirm}>
-                {confirmDialog.confirmText || '确定'}
+                {confirmDialog.confirmText || t('common.confirm')}
               </Button>
             </div>
           </div>

@@ -9,6 +9,7 @@ import { ConditionGroup } from './ConditionEditor'
 import { ActionsEditor } from './ActionEditor'
 import type { Rule, Stage, Match, Action, Condition } from '@/types/rules'
 import { ACTION_TYPE_LABELS, isTerminalAction } from '@/types/rules'
+import { useTranslation } from 'react-i18next'
 
 interface RuleEditorProps {
   rule: Rule
@@ -25,6 +26,7 @@ export function RuleEditor({
   isExpanded = true,
   onToggleExpand
 }: RuleEditorProps) {
+  const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<'match' | 'actions'>('match')
 
   const updateMatch = (key: keyof Match, conditions: Condition[]) => {
@@ -53,10 +55,10 @@ export function RuleEditor({
 
   // 获取行为摘要
   const getActionsSummary = () => {
-    if (rule.actions.length === 0) return '无行为'
+    if (rule.actions.length === 0) return 'No actions'
     const types = rule.actions.map(a => ACTION_TYPE_LABELS[a.type])
     if (types.length <= 2) return types.join(', ')
-    return `${types[0]} 等 ${types.length} 个`
+    return `${types[0]} & ${types.length - 1} more`
   }
 
   // 检查是否有终结性行为
@@ -77,7 +79,7 @@ export function RuleEditor({
           size="icon"
           className="h-7 w-7"
           onClick={toggleEnabled}
-          title={rule.enabled ? '点击禁用' : '点击启用'}
+          title={rule.enabled ? t('rules.enabled') : t('rules.disabled')}
         >
           {rule.enabled ? (
             <Power className="w-4 h-4 text-green-500" />
@@ -90,19 +92,19 @@ export function RuleEditor({
           <div className="flex items-center gap-2">
             <span className="font-medium truncate">{rule.name || rule.id}</span>
             <Badge variant="outline" className="text-xs">
-              {rule.stage === 'request' ? '请求' : '响应'}
+              {rule.stage === 'request' ? t('rules.requestStage') : t('rules.responseStage')}
             </Badge>
             <Badge variant="secondary" className="text-xs">
-              优先级 {rule.priority}
+              {t('rules.priority')} {rule.priority}
             </Badge>
             {hasTerminalAction && (
               <Badge variant="destructive" className="text-xs">
-                终结
+                {t('rules.terminal')}
               </Badge>
             )}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            {conditionCount} 个条件 · {getActionsSummary()}
+            {conditionCount} {t('rules.conditions')} · {getActionsSummary()}
           </div>
         </div>
 
@@ -120,39 +122,39 @@ export function RuleEditor({
           {/* 基础信息 */}
           <div className="grid grid-cols-4 gap-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">规则 ID</label>
+              <label className="text-sm font-medium">ID</label>
               <Input
                 value={rule.id}
                 onChange={(e) => onChange({ ...rule, id: e.target.value })}
-                placeholder="唯一标识"
+                placeholder="ID"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">规则名称</label>
+              <label className="text-sm font-medium">Name</label>
               <Input
                 value={rule.name}
                 onChange={(e) => onChange({ ...rule, name: e.target.value })}
-                placeholder="规则描述"
+                placeholder="Name"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">执行阶段</label>
+              <label className="text-sm font-medium">{t('rules.stage')}</label>
               <Select
                 value={rule.stage}
                 onChange={(e) => onChange({ ...rule, stage: e.target.value as Stage, actions: [] })}
                 options={[
-                  { value: 'request', label: '请求阶段' },
-                  { value: 'response', label: '响应阶段' },
+                  { value: 'request', label: t('rules.requestStage') },
+                  { value: 'response', label: t('rules.responseStage') },
                 ]}
               />
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">优先级</label>
+              <label className="text-sm font-medium">{t('rules.priority')}</label>
               <Input
                 type="number"
                 value={rule.priority}
                 onChange={(e) => onChange({ ...rule, priority: parseInt(e.target.value) || 0 })}
-                placeholder="数值越大越优先"
+                placeholder="0"
               />
             </div>
           </div>
@@ -160,21 +162,21 @@ export function RuleEditor({
           {/* Match 和 Actions 编辑区 */}
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'match' | 'actions')}>
             <TabsList>
-              <TabsTrigger value="match">匹配条件</TabsTrigger>
-              <TabsTrigger value="actions">执行行为 ({rule.actions.length})</TabsTrigger>
+              <TabsTrigger value="match">{t('rules.conditions')}</TabsTrigger>
+              <TabsTrigger value="actions">{t('rules.actions')} ({rule.actions.length})</TabsTrigger>
             </TabsList>
 
             <TabsContent value="match" className="space-y-4 pt-4">
               <ConditionGroup
-                title="ALL OF (全部满足)"
-                description="所有条件都必须为真才能命中"
+                title={t('rules.allOf')}
+                description={t('rules.allOfDesc')}
                 conditions={rule.match.allOf || []}
                 onChange={(conditions) => updateMatch('allOf', conditions)}
               />
 
               <ConditionGroup
-                title="ANY OF (任一满足)"
-                description="任意一个条件为真即命中"
+                title={t('rules.anyOf')}
+                description={t('rules.anyOfDesc')}
                 conditions={rule.match.anyOf || []}
                 onChange={(conditions) => updateMatch('anyOf', conditions)}
               />
@@ -202,6 +204,7 @@ interface RuleListEditorProps {
 }
 
 export function RuleListEditor({ rules, onChange }: RuleListEditorProps) {
+  const { t } = useTranslation()
   const [expandedRules, setExpandedRules] = useState<Set<string>>(new Set())
 
   const toggleExpand = (ruleId: string) => {
@@ -245,7 +248,7 @@ export function RuleListEditor({ rules, onChange }: RuleListEditorProps) {
 
       {rules.length === 0 && (
         <div className="text-center text-muted-foreground p-8 border rounded-lg border-dashed">
-          暂无规则，点击上方 "添加规则" 按钮创建
+          {t('rules.noRules')}
         </div>
       )}
     </div>

@@ -22,6 +22,7 @@ import {
   FINAL_RESULT_LABELS, 
   FINAL_RESULT_COLORS 
 } from '@/types/events'
+import { useTranslation } from 'react-i18next'
 
 interface EventsPanelProps {
   matchedEvents: MatchedEventWithId[]
@@ -32,6 +33,7 @@ export function EventsPanel({
   matchedEvents, 
   onClearMatched, 
 }: EventsPanelProps) {
+  const { t } = useTranslation()
   const totalMatched = matchedEvents.length
 
   return (
@@ -39,7 +41,7 @@ export function EventsPanel({
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium">
           <CheckCircle className="w-4 h-4 text-primary" />
-          匹配请求
+          {t('common.events')}
           {totalMatched > 0 && (
             <Badge variant="secondary" className="ml-1 text-xs">{totalMatched}</Badge>
           )}
@@ -60,6 +62,7 @@ interface MatchedEventsListProps {
 
 // 匹配事件列表
 function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
+  const { t } = useTranslation()
   const [search, setSearch] = useState('')
   const [resultFilter, setResultFilter] = useState<FinalResultType | 'all'>('all')
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null)
@@ -92,8 +95,8 @@ function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
         <div className="text-4xl mb-4 opacity-50">✓</div>
-        <p>暂无匹配事件</p>
-        <p className="text-sm mt-1">匹配规则的请求将在此显示</p>
+        <p>{t('events.noEvents')}</p>
+        <p className="text-sm mt-1">{t('events.noEventsSub')}</p>
       </div>
     )
   }
@@ -107,7 +110,7 @@ function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索 URL、方法、规则名..."
+            placeholder={t('events.searchPlaceholder')}
             className="pl-9 pr-8"
           />
           {search && (
@@ -127,7 +130,7 @@ function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
             onChange={(e) => setResultFilter(e.target.value as FinalResultType | 'all')}
             className="h-9 px-2 rounded-md border bg-background text-sm"
           >
-            <option value="all">全部 ({resultCounts.all})</option>
+            <option value="all">{t('events.all')} ({resultCounts.all})</option>
             {Object.entries(FINAL_RESULT_LABELS).map(([type, label]) => (
               resultCounts[type] > 0 && (
                 <option key={type} value={type}>
@@ -141,13 +144,13 @@ function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
         {onClear && (
           <Button variant="outline" size="sm" onClick={onClear}>
             <Trash2 className="w-4 h-4 mr-1" />
-            清除
+            {t('events.clear')}
           </Button>
         )}
       </div>
 
       <div className="text-sm text-muted-foreground mb-3">
-        共 {filteredEvents.length} 条 {search && '（搜索结果）'}
+        {t('rules.ruleCount', { count: filteredEvents.length })} {search && `(${t('common.refresh')})`}
       </div>
 
       <ScrollArea className="flex-1">
@@ -168,13 +171,14 @@ function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
 
 // 事件详情视图（参考 Chrome DevTools 布局）
 function EventDetailView({ event }: { event: MatchedEventWithId }) {
+  const { t } = useTranslation()
   const { networkEvent } = event
   const { request, response, matchedRules, finalResult } = networkEvent
 
   // 状态管理：默认全部折叠
   const [collapsed, setCollapsed] = useState({
-    general: false,
-    rules: false,
+    general: true,
+    rules: true,
     responseHeaders: false,
     requestHeaders: false,
   })
@@ -211,19 +215,19 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
             value="headers" 
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-background h-9 px-4 text-xs font-medium"
           >
-            标头
+            {t('events.sections.info')}
           </TabsTrigger>
           <TabsTrigger 
             value="payload" 
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-background h-9 px-4 text-xs font-medium"
           >
-            负载
+            Payload
           </TabsTrigger>
           <TabsTrigger 
             value="response" 
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-background h-9 px-4 text-xs font-medium"
           >
-            响应
+            {t('common.network')}
           </TabsTrigger>
         </TabsList>
 
@@ -236,7 +240,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                   onClick={() => toggleSection('general')}
                   className="w-full flex items-center gap-1 text-[11px] font-bold text-muted-foreground uppercase hover:text-foreground transition-colors"
                 >
-                  {collapsed.general ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} 常规
+                  {collapsed.general ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} {t('events.sections.info')}
                 </button>
                 {collapsed.general && (
                   <div className="mt-2 ml-4 space-y-1.5 text-xs font-mono">
@@ -279,7 +283,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                     onClick={() => toggleSection('rules')}
                     className="w-full flex items-center gap-1 text-[11px] font-bold text-muted-foreground uppercase hover:text-foreground transition-colors"
                   >
-                    {collapsed.rules ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} 匹配规则
+                    {collapsed.rules ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} {t('events.sections.rules')}
                   </button>
                   {collapsed.rules && (
                     <div className="mt-2 ml-4 space-y-2 text-xs">
@@ -306,7 +310,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                   onClick={() => toggleSection('responseHeaders')}
                   className="w-full flex items-center gap-1 text-[11px] font-bold text-muted-foreground uppercase hover:text-foreground transition-colors"
                 >
-                  {collapsed.responseHeaders ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} 响应标头
+                  {collapsed.responseHeaders ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} {t('events.sections.response')}
                 </button>
                 {collapsed.responseHeaders && (
                   <div className="mt-2 ml-4 space-y-1 text-xs font-mono border-l-2 pl-3">
@@ -318,7 +322,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                         </div>
                       ))
                     ) : (
-                      <div className="text-muted-foreground italic">无标头数据</div>
+                      <div className="text-muted-foreground italic">No data</div>
                     )}
                   </div>
                 )}
@@ -330,7 +334,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                   onClick={() => toggleSection('requestHeaders')}
                   className="w-full flex items-center gap-1 text-[11px] font-bold text-muted-foreground uppercase hover:text-foreground transition-colors"
                 >
-                  {collapsed.requestHeaders ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} 请求标头
+                  {collapsed.requestHeaders ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} {t('events.sections.request')}
                 </button>
                 {collapsed.requestHeaders && (
                   <div className="mt-2 ml-4 space-y-1 text-xs font-mono border-l-2 pl-3">
@@ -342,7 +346,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                         </div>
                       ))
                     ) : (
-                      <div className="text-muted-foreground italic">无标头数据</div>
+                      <div className="text-muted-foreground italic">No data</div>
                     )}
                   </div>
                 )}
@@ -366,7 +370,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                  <div className="text-xs italic">此请求没有负载数据</div>
+                  <div className="text-xs italic">No payload data</div>
                 </div>
               )}
             </div>
@@ -388,7 +392,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                  <div className="text-xs italic">此请求没有响应体数据</div>
+                  <div className="text-xs italic">No response data</div>
                 </div>
               )}
             </div>
@@ -407,9 +411,10 @@ interface MatchedEventItemProps {
 
 // 匹配事件项
 function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventItemProps) {
+  const { t } = useTranslation()
   const colors = FINAL_RESULT_COLORS[event.networkEvent.finalResult!] || FINAL_RESULT_COLORS.passed
   const formatTime = (ts: number) => {
-    return new Date(ts).toLocaleTimeString('zh-CN', { 
+    return new Date(ts).toLocaleTimeString(undefined, { 
       hour: '2-digit', 
       minute: '2-digit', 
       second: '2-digit',
@@ -441,7 +446,7 @@ function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventIte
 
         {/* 匹配规则数 */}
         <Badge variant="secondary" className="text-xs">
-          {event.networkEvent.matchedRules?.length || 0} 规则
+          {event.networkEvent.matchedRules?.length || 0} {t('common.rules')}
         </Badge>
 
         {/* 时间 */}
