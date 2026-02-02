@@ -571,10 +571,10 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                   </span>
                 </div>
 
-                <div className="flex-1 min-h-0 overflow-auto flex flex-col">
+                <div className="flex-1 min-h-0 flex flex-col">
                   {showJson ? (
                     <div className="flex-1 flex flex-col min-h-0">
-                      <textarea
+                      <Textarea
                         value={jsonEditorContent}
                         onChange={(e) => {
                           setJsonEditorContent(e.target.value)
@@ -591,22 +591,24 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                           }
                           updateDirty(true)
                         }}
-                        className={`flex-1 w-full p-3 rounded-md border bg-background font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring ${
+                        className={`flex-1 h-full font-mono text-sm resize-none focus-visible:ring-1 ${
                           jsonError ? 'border-destructive' : ''
                         }`}
                         spellCheck={false}
                       />
                       {jsonError && (
-                        <div className="mt-2 p-2 text-sm text-destructive bg-destructive/10 rounded-md">
+                        <div className="mt-2 p-2 text-sm text-destructive bg-destructive/10 rounded-md shrink-0">
                           {jsonError}
                         </div>
                       )}
                     </div>
                   ) : (
-                    <RuleListEditor
-                      rules={ruleSet.rules}
-                      onChange={handleRulesChange}
-                    />
+                    <ScrollArea className="flex-1">
+                      <RuleListEditor
+                        rules={ruleSet.rules}
+                        onChange={handleRulesChange}
+                      />
+                    </ScrollArea>
                   )}
                 </div>
               </>
