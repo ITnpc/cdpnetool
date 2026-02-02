@@ -3,16 +3,8 @@ import type {
   NetworkEvent,
   MatchedEventWithId 
 } from '@/types/events'
-
-// 类型定义
-export interface TargetInfo {
-  id: string
-  type: string
-  url: string
-  title: string
-  isCurrent: boolean
-  isUser: boolean
-}
+import { api } from '@/api'
+import { domain } from '../../wailsjs/go/models'
 
 // Session 状态
 interface SessionState {
@@ -21,7 +13,7 @@ interface SessionState {
   isConnected: boolean
   isIntercepting: boolean
   activeConfigId: number | null
-  targets: TargetInfo[]
+  targets: domain.TargetInfo[]
   attachedTargetId: string | null
   matchedEvents: MatchedEventWithId[]    // 匹配的事件（会存入数据库）
   isTrafficCapturing: boolean           // 是否正在捕获全量流量
@@ -34,9 +26,13 @@ interface SessionState {
   setIntercepting: (intercepting: boolean) => void
   setTrafficCapturing: (capturing: boolean) => void
   setActiveConfigId: (id: number | null) => void
-  setTargets: (targets: TargetInfo[]) => void
+  setTargets: (targets: domain.TargetInfo[]) => void
   setAttachedTargetId: (targetId: string | null) => void
   resetSession: () => void
+  
+  // 复杂业务 Actions
+  refreshTargets: () => Promise<void>
+  toggleTarget: (targetId: string) => Promise<{ success: boolean; message?: string }>
   
   // 事件操作
   addInterceptEvent: (event: NetworkEvent) => void
@@ -51,7 +47,7 @@ function generateEventId(timestamp: number): string {
   return `${timestamp}_${Math.random().toString(36).slice(2, 10)}`
 }
 
-export const useSessionStore = create<SessionState>((set) => ({
+export const useSessionStore = create<SessionState>((set, get) => ({
   currentSessionId: null,
   devToolsURL: 'http://localhost:9222',
   isConnected: false,
@@ -80,12 +76,80 @@ export const useSessionStore = create<SessionState>((set) => ({
     targets: [],
     trafficEvents: [],
   }),
+
+  // 刷新目标列表
+  refreshTargets: async () => {
+    const { currentSessionId: sessionId } = get()
+    if (!sessionId) return
+    
+    try {
+      const result = await api.browser.listTargets(sessionId)
+      if (result?.success && result.data) {
+        set({ targets: result.data.targets || [] })
+      }
+    } catch (e) {
+      console.error('List targets error:', e)
+    }
+  },
+
+  // 切换目标
+  toggleTarget: async (targetId: string) => {
+    const { 
+      currentSessionId: sessionId, 
+      attachedTargetId, 
+      isIntercepting, 
+      isTrafficCapturing 
+    } = get()
+    
+    if (!sessionId) return { success: false, message: '会话未启动' }
+    
+    const isCurrentlyAttached = attachedTargetId === targetId
+    
+    try {
+      // 1. 如果正在拦截或捕获，切换任何目标状态前必须先停止
+      if (isIntercepting || isTrafficCapturing) {
+        if (isIntercepting) {
+          await api.session.disableInterception(sessionId)
+          set({ isIntercepting: false, activeConfigId: null })
+        }
+        if (isTrafficCapturing) {
+          await api.session.enableTrafficCapture(sessionId, false)
+          set({ isTrafficCapturing: false })
+        }
+      }
+
+      // 2. 如果点击的是当前已附着的目标 -> 执行“分离”
+      if (isCurrentlyAttached) {
+        const result = await api.browser.detachTarget(sessionId, targetId)
+        if (result?.success) {
+          set({ attachedTargetId: null })
+          return { success: true }
+        }
+        return { success: false, message: result?.message }
+      }
+
+      // 3. 如果点击的是新目标 -> 先分离旧的（如果有），再附着新的
+      if (attachedTargetId) {
+        await api.browser.detachTarget(sessionId, attachedTargetId)
+      }
+
+      const result = await api.browser.attachTarget(sessionId, targetId)
+      if (result?.success) {
+        set({ attachedTargetId: targetId })
+        return { success: true }
+      }
+      
+      set({ attachedTargetId: null })
+      return { success: false, message: result?.message }
+    } catch (e) {
+      return { success: false, message: String(e) }
+    }
+  },
   
   // 添加事件
   addInterceptEvent: (event) => set((state) => {
     console.log('[Store] 处理拦截事件:', event)
     
-    // 后端现在只发送匹配成功的 NetworkEvent
     if (event.isMatched) {
       const eventWithId: MatchedEventWithId = {
         networkEvent: event,
@@ -103,11 +167,9 @@ export const useSessionStore = create<SessionState>((set) => ({
     const existingIndex = state.trafficEvents.findIndex(e => e.id === event.id)
     if (existingIndex > -1) {
       const newList = [...state.trafficEvents]
-      // 合并数据：响应阶段会补全 response 和 finalResult
       newList[existingIndex] = { ...newList[existingIndex], ...event }
       return { trafficEvents: newList }
     } else {
-      // 新请求，限制 100 条
       return { trafficEvents: [event, ...state.trafficEvents].slice(0, 100) }
     }
   }),
