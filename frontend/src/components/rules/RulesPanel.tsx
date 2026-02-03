@@ -423,6 +423,13 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
 
   return (
     <div className="flex-1 flex min-h-0 h-full">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        onChange={handleImport}
+        className="hidden"
+      />
       {isInitializing ? (
         <div className="flex items-center justify-center w-full text-muted-foreground">
           <div className="text-center">
@@ -433,10 +440,25 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
         <>
           <div className="w-60 border-r flex flex-col shrink-0">
             <div className="p-3 border-b flex items-center justify-between">
-              <span className="font-medium text-sm">{t('rules.listTitle')}</span>
-              <Button size="sm" variant="ghost" onClick={handleCreateRuleSet} title={t('common.add')}>
-                <Plus className="w-4 h-4" />
-              </Button>
+              <span className="font-medium text-sm shrink-0">{t('rules.listTitle')}</span>
+              <div className="flex items-center gap-0.5">
+                <Button size="sm" variant="ghost" onClick={handleCreateRuleSet} title={t('common.add')} className="h-8 w-8 p-0">
+                  <Plus className="w-4 h-4" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => fileInputRef.current?.click()} title={t('common.import')} className="h-8 w-8 p-0">
+                  <Upload className="w-4 h-4" />
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={handleExport} 
+                  title={t('common.export')} 
+                  className="h-8 w-8 p-0"
+                  disabled={ruleSets.length === 0}
+                >
+                  <Download className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
             <ScrollArea className="flex-1">
               <div className="p-2 space-y-1">
@@ -506,21 +528,6 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                     </button>
                     {isDirty && <span className="w-2 h-2 rounded-full bg-primary animate-pulse" title={t('rules.unsavedChanges')} />}
                     <div className="flex-1" />
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".json"
-                      onChange={handleImport}
-                      className="hidden"
-                    />
-                    <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                      <Upload className="w-4 h-4 mr-1" />
-                      {t('common.import')}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={handleExport}>
-                      <Download className="w-4 h-4 mr-1" />
-                      {t('common.export')}
-                    </Button>
                     <Button size="sm" onClick={handleSave} disabled={isLoading}>
                       <Save className="w-4 h-4 mr-1" />
                       {isLoading ? t('common.saving') : t('common.save')}
