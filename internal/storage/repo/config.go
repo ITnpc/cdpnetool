@@ -99,7 +99,7 @@ func (r *ConfigRepo) GetByConfigID(ctx context.Context, configID string) (*model
 // List 列出所有配置
 func (r *ConfigRepo) List(ctx context.Context) ([]model.ConfigRecord, error) {
 	var records []model.ConfigRecord
-	if err := r.Db.WithContext(ctx).Order("updated_at DESC").Find(&records).Error; err != nil {
+	if err := r.Db.WithContext(ctx).Order("id DESC").Find(&records).Error; err != nil {
 		return nil, err
 	}
 	return records, nil

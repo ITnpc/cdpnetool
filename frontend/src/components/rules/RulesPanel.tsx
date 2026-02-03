@@ -151,14 +151,12 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
         onConfirm: () => {
           loadRuleSetData(record)
           api.config.setActive(record.id)
-          toast({ variant: 'success', title: `${t('common.refresh')}: ${record.name}` })
           setConfirmDialog(null)
         },
         onSave: async () => {
           await handleSave()
           loadRuleSetData(record)
           await api.config.setActive(record.id)
-          toast({ variant: 'success', title: `${t('common.refresh')}: ${record.name}` })
           setConfirmDialog(null)
         }
       })
@@ -166,7 +164,6 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     }
     loadRuleSetData(record)
     await api.config.setActive(record.id)
-    toast({ variant: 'success', title: `${t('common.refresh')}: ${record.name}` })
   }
 
   const handleCreateRuleSet = async () => {
