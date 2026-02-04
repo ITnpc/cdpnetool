@@ -207,5 +207,20 @@
     "waiting": "等待网络活动...",
     "clickToStart": "点击“开始捕获”查看流量",
     "searchPlaceholder": "搜索 URL、方法..."
+  },
+  "errors": {
+    "title": "错误",
+    "SESSION_NOT_FOUND": "会话不存在，请先启动会话",
+    "SESSION_START_FAILED": "会话启动失败",
+    "NO_TARGET_ATTACHED": "请先在目标页面附加至少一个目标",
+    "TARGET_NOT_FOUND": "目标不存在",
+    "DEVTOOLS_UNREACHABLE": "无法连接到浏览器，请检查 DevTools 地址是否正确",
+    "NETWORK_ERROR": "网络连接错误，请确保浏览器已开启 DevTools 远程调试",
+    "INVALID_CONFIG": "配置格式错误，请检查 JSON 格式是否正确",
+    "CONFIG_NOT_FOUND": "配置不存在",
+    "BROWSER_NOT_RUNNING": "浏览器未运行",
+    "BROWSER_START_FAILED": "浏览器启动失败，请检查系统是否安装了 Chrome 或 Edge",
+    "DATABASE_ERROR": "数据库错误，请重启应用",
+    "UNKNOWN_ERROR": "未知错误"
   }
 }

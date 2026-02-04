@@ -12,6 +12,7 @@ import { TargetsPanel } from '@/components/targets/TargetsPanel'
 import { RulesPanel } from '@/components/rules/RulesPanel'
 import { api } from '@/api'
 import { useTranslation } from 'react-i18next'
+import { getErrorMessage } from '@/lib/error-handler'
 import { 
   Moon, 
   Sun,
@@ -113,10 +114,10 @@ function App() {
           resetSession()
           toast({ variant: 'success', title: t('common.disconnect') })
         } else {
-          toast({ variant: 'destructive', title: 'Error', description: result?.message })
+          toast({ variant: 'destructive', title: t('errors.title'), description: getErrorMessage(result, t) })
         }
       } catch (e) {
-        toast({ variant: 'destructive', title: 'Error', description: String(e) })
+        toast({ variant: 'destructive', title: t('errors.title'), description: String(e) })
       }
     } else {
       setIsLoading(true)
@@ -132,10 +133,10 @@ function App() {
           })
           await refreshTargets()
         } else {
-          toast({ variant: 'destructive', title: 'Error', description: result?.message || 'Failed' })
+          toast({ variant: 'destructive', title: t('errors.title'), description: getErrorMessage(result, t) })
         }
       } catch (e) {
-        toast({ variant: 'destructive', title: 'Error', description: String(e) })
+        toast({ variant: 'destructive', title: t('errors.title'), description: String(e) })
       } finally {
         setIsLoading(false)
       }
@@ -156,7 +157,7 @@ function App() {
   const handleToggleTarget = async (targetId: string) => {
     const result = await toggleTarget(targetId)
     if (!result.success) {
-      toast({ variant: 'destructive', title: 'Error', description: result.message })
+      toast({ variant: 'destructive', title: t('errors.title'), description: getErrorMessage(result, t) })
     }
   }
 
@@ -172,10 +173,10 @@ function App() {
           title: enabled ? 'Start Capture' : 'Stop Capture',
         })
       } else {
-        toast({ variant: 'destructive', title: 'Error', description: result?.message })
+        toast({ variant: 'destructive', title: t('errors.title'), description: getErrorMessage(result, t) })
       }
     } catch (e) {
-      toast({ variant: 'destructive', title: 'Error', description: String(e) })
+      toast({ variant: 'destructive', title: t('errors.title'), description: String(e) })
     }
   }
 

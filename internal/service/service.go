@@ -83,6 +83,15 @@ func (o *Orchestrator) StartSession(ctx context.Context, cfg domain.SessionConfi
 	proc := processor.New(trk, eng, matchedAud, trafficAud, o.log)
 
 	clientMgr := cdp.NewClientManager(cfg.DevToolsURL, o.log)
+
+	// 验证连通性
+	if err := clientMgr.TestConnection(sessionCtx); err != nil {
+		cancel()
+		workPool.Stop()
+		o.log.Err(err, "连接浏览器失败", "url", cfg.DevToolsURL)
+		return "", fmt.Errorf("无法连接到浏览器: %w", err)
+	}
+
 	intr := cdp.NewInterceptor(o.log, workPool)
 
 	sess := session.New(id)

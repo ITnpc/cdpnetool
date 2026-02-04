@@ -42,6 +42,13 @@ func NewClientManager(url string, l logger.Logger) *ClientManager {
 	}
 }
 
+// TestConnection 测试与浏览器的连通性
+func (m *ClientManager) TestConnection(ctx context.Context) error {
+	dt := devtool.New(m.devtoolsURL)
+	_, err := dt.List(ctx)
+	return err
+}
+
 // ListTargets 获取浏览器当前所有的标签页目标（仅返回 type == "page"）
 func (m *ClientManager) ListTargets(ctx context.Context) ([]domain.TargetInfo, error) {
 	dt := devtool.New(m.devtoolsURL)

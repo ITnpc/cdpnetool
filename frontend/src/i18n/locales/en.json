@@ -207,5 +207,20 @@
     "waiting": "Waiting for network activity...",
     "clickToStart": "Click \"Start Capture\" to see traffic",
     "searchPlaceholder": "Search URL, method..."
+  },
+  "errors": {
+    "title": "Error",
+    "SESSION_NOT_FOUND": "Session not found, please start a session first",
+    "SESSION_START_FAILED": "Failed to start session",
+    "NO_TARGET_ATTACHED": "Please attach at least one target in Targets panel",
+    "TARGET_NOT_FOUND": "Target not found",
+    "DEVTOOLS_UNREACHABLE": "Cannot connect to browser, please check DevTools URL",
+    "NETWORK_ERROR": "Network connection error, ensure browser has DevTools remote debugging enabled",
+    "INVALID_CONFIG": "Invalid config format, please check JSON syntax",
+    "CONFIG_NOT_FOUND": "Config not found",
+    "BROWSER_NOT_RUNNING": "Browser is not running",
+    "BROWSER_START_FAILED": "Failed to start browser, please check if Chrome or Edge is installed",
+    "DATABASE_ERROR": "Database error, please restart the application",
+    "UNKNOWN_ERROR": "Unknown error"
   }
 }
