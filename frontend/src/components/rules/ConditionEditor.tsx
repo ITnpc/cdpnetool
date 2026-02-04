@@ -184,9 +184,10 @@ interface ConditionGroupProps {
   description: string
   conditions: Condition[]
   onChange: (conditions: Condition[]) => void
+  headerSlot?: React.ReactNode
 }
 
-export function ConditionGroup({ title, description, conditions, onChange }: ConditionGroupProps) {
+export function ConditionGroup({ title, description, conditions, onChange, headerSlot }: ConditionGroupProps) {
   const { t } = useTranslation()
   const addCondition = () => {
     onChange([...conditions, createEmptyCondition('urlPrefix')])
@@ -204,16 +205,33 @@ export function ConditionGroup({ title, description, conditions, onChange }: Con
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div>
-          <h4 className="font-medium">{title}</h4>
-          <p className="text-xs text-muted-foreground">{description}</p>
+      {headerSlot ? (
+        <div className="flex items-center justify-between">
+          {headerSlot}
+          <Button variant="outline" size="sm" onClick={addCondition}>
+            <Plus className="w-4 h-4 mr-1" />
+            {t('rules.addCondition')}
+          </Button>
         </div>
-        <Button variant="outline" size="sm" onClick={addCondition}>
-          <Plus className="w-4 h-4 mr-1" />
-          {t('rules.addCondition')}
-        </Button>
-      </div>
+      ) : (title || description) ? (
+        <div className="flex items-center justify-between">
+          <div>
+            {title && <h4 className="font-medium">{title}</h4>}
+            {description && <p className="text-xs text-muted-foreground">{description}</p>}
+          </div>
+          <Button variant="outline" size="sm" onClick={addCondition}>
+            <Plus className="w-4 h-4 mr-1" />
+            {t('rules.addCondition')}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-end">
+          <Button variant="outline" size="sm" onClick={addCondition}>
+            <Plus className="w-4 h-4 mr-1" />
+            {t('rules.addCondition')}
+          </Button>
+        </div>
+      )}
 
       {conditions.length === 0 ? (
         <div className="text-sm text-muted-foreground p-3 border rounded-lg border-dashed text-center">

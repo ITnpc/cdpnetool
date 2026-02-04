@@ -473,20 +473,32 @@ export function ActionsEditor({ actions, onChange, stage, onStageChange }: Actio
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Select
-            value={stage}
-            onChange={(e) => onStageChange?.(e.target.value as Stage)}
-            options={[
-              { value: 'request', label: t('rules.requestStage') },
-              { value: 'response', label: t('rules.responseStage') },
-            ]}
-            className="w-32"
-          />
-          <div>
-            <h4 className="font-medium">{t('rules.actions')}</h4>
-            <p className="text-xs text-muted-foreground">{t('rules.actionOrderDesc')}</p>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center bg-muted rounded-md p-0.5">
+            <button
+              className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                stage === 'request' 
+                  ? 'bg-background text-foreground shadow-sm' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => onStageChange?.('request')}
+            >
+              {t('rules.requestStage')}
+            </button>
+            <button
+              className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                stage === 'response' 
+                  ? 'bg-background text-foreground shadow-sm' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => onStageChange?.('response')}
+            >
+              {t('rules.responseStage')}
+            </button>
           </div>
+          <span className="text-xs text-muted-foreground">
+            {stage === 'request' ? t('rules.requestStageDesc') : t('rules.responseStageDesc')}
+          </span>
         </div>
         <Button variant="outline" size="sm" onClick={addAction}>
           <Plus className="w-4 h-4 mr-1" />

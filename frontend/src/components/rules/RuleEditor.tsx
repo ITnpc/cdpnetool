@@ -5,9 +5,11 @@ import { Badge } from '@/components/ui/badge'
 import { ChevronDown, ChevronUp, Trash2, GripVertical, Power, PowerOff } from 'lucide-react'
 import { ConditionGroup } from './ConditionEditor'
 import { ActionsEditor } from './ActionEditor'
-import type { Rule, Match, Action, Condition } from '@/types/rules'
+import type { Rule, Action, Condition } from '@/types/rules'
 import { isTerminalAction, getActionTypeLabel } from '@/types/rules'
 import { useTranslation } from 'react-i18next'
+
+type MatchMode = 'allOf' | 'anyOf'
 
 interface RuleEditorProps {
   rule: Rule
@@ -28,12 +30,40 @@ export function RuleEditor({
   const [conditionsExpanded, setConditionsExpanded] = useState(true)
   const [actionsExpanded, setActionsExpanded] = useState(true)
 
-  const updateMatch = (key: keyof Match, conditions: Condition[]) => {
+  // 确定当前匹配模式
+  const currentMode: MatchMode = useMemo(() => {
+    const hasAllOf = rule.match.allOf !== undefined && rule.match.allOf !== null
+    const hasAnyOf = rule.match.anyOf !== undefined && rule.match.anyOf !== null
+    
+    if (hasAllOf) return 'allOf'
+    if (hasAnyOf) return 'anyOf'
+    return 'allOf' // 默认
+  }, [rule.match.allOf, rule.match.anyOf])
+
+  const currentConditions = currentMode === 'allOf' 
+    ? (rule.match.allOf || []) 
+    : (rule.match.anyOf || [])
+
+  const handleModeChange = (newMode: MatchMode) => {
+    if (newMode === currentMode) return
+    
+    // 将条件从旧模式迁移到新模式
+    const conditions = currentConditions.length > 0 ? currentConditions : []
     onChange({
       ...rule,
       match: {
-        ...rule.match,
-        [key]: conditions.length > 0 ? conditions : undefined
+        allOf: newMode === 'allOf' ? conditions : undefined,
+        anyOf: newMode === 'anyOf' ? conditions : undefined
+      }
+    })
+  }
+
+  const handleConditionsChange = (conditions: Condition[]) => {
+    onChange({
+      ...rule,
+      match: {
+        allOf: currentMode === 'allOf' ? conditions : undefined,
+        anyOf: currentMode === 'anyOf' ? conditions : undefined
       }
     })
   }
@@ -169,18 +199,41 @@ export function RuleEditor({
             </div>
             {conditionsExpanded && (
               <div className="space-y-4">
+                {/* 条件列表 */}
                 <ConditionGroup
-                  title={t('rules.allOf')}
-                  description={t('rules.allOfDesc')}
-                  conditions={rule.match.allOf || []}
-                  onChange={(conditions) => updateMatch('allOf', conditions)}
-                />
-
-                <ConditionGroup
-                  title={t('rules.anyOf')}
-                  description={t('rules.anyOfDesc')}
-                  conditions={rule.match.anyOf || []}
-                  onChange={(conditions) => updateMatch('anyOf', conditions)}
+                  title=""
+                  description=""
+                  conditions={currentConditions}
+                  onChange={handleConditionsChange}
+                  headerSlot={
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center bg-muted rounded-md p-0.5">
+                        <button
+                          className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                            currentMode === 'allOf' 
+                              ? 'bg-background text-foreground shadow-sm' 
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                          onClick={() => handleModeChange('allOf')}
+                        >
+                          {t('rules.allOf')}
+                        </button>
+                        <button
+                          className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                            currentMode === 'anyOf' 
+                              ? 'bg-background text-foreground shadow-sm' 
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                          onClick={() => handleModeChange('anyOf')}
+                        >
+                          {t('rules.anyOf')}
+                        </button>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {currentMode === 'allOf' ? t('rules.allOfDesc') : t('rules.anyOfDesc')}
+                      </span>
+                    </div>
+                  }
                 />
               </div>
             )}
