@@ -29,6 +29,11 @@
     "toggleTheme": "Toggle Theme",
     "toggleLanguage": "Toggle Language"
   },
+  "status": {
+    "browserConnected": "Browser Connect",
+    "targetAttached": "Page Attach",
+    "configEnabled": "Enable Config"
+  },
   "targets": {
     "title": "Page Targets",
     "attach": "Attach",

@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Toaster } from '@/components/ui/toaster'
+import { StatusIndicator } from '@/components/ui/status-indicator'
 import { useToast } from '@/hooks/use-toast'
 import { useSessionStore, useThemeStore } from '@/stores'
 import { EventsPanel } from '@/components/events'
@@ -31,6 +32,7 @@ function App() {
     setCurrentSession,
     isConnected,
     setConnected,
+    isIntercepting,
     setIntercepting,
     targets,
     attachedTargetId,
@@ -225,17 +227,25 @@ function App() {
         </div>
         
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 text-sm">
-            <span className={`flex items-center gap-1 ${isConnected ? 'text-green-500' : 'text-muted-foreground'}`}>
-              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-muted-foreground'}`} />
-              {isConnected ? t('common.connected') : t('common.notConnected')}
-            </span>
-            {isConnected && (
-              <span className="text-muted-foreground">
-                · {t('common.target')} {attachedTargetId ? 1 : 0}/1
-              </span>
-            )}
-          </div>
+          <StatusIndicator 
+            steps={[
+              {
+                key: 'browser',
+                label: t('status.browserConnected'),
+                status: isConnected ? 'completed' : 'current'
+              },
+              {
+                key: 'target',
+                label: t('status.targetAttached'),
+                status: !isConnected ? 'pending' : (attachedTargetId ? 'completed' : 'current')
+              },
+              {
+                key: 'config',
+                label: t('status.configEnabled'),
+                status: (!isConnected || !attachedTargetId) ? 'pending' : (isIntercepting ? 'completed' : 'current')
+              }
+            ]}
+          />
           <Button variant="ghost" size="icon" onClick={handleToggleLanguage} title={t('toolbar.toggleLanguage')}>
             <Languages className="w-4 h-4" />
           </Button>

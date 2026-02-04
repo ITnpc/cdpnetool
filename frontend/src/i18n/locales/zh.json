@@ -29,6 +29,11 @@
     "toggleTheme": "切换主题",
     "toggleLanguage": "切换语言"
   },
+  "status": {
+    "browserConnected": "浏览器连接",
+    "targetAttached": "页面附加",
+    "configEnabled": "启用配置"
+  },
   "targets": {
     "title": "页面目标",
     "attach": "附加",
