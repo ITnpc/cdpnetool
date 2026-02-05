@@ -197,15 +197,61 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
     }
   }, [request.body])
 
-  const formattedResponseBody = useMemo(() => {
-    if (!response?.body) return null
+  const isTextContent = (contentType: string): boolean => {
+    const textTypes = [
+      'text/',
+      'application/json',
+      'application/xml',
+      'application/javascript',
+      'application/x-www-form-urlencoded'
+    ]
+    return textTypes.some(type => contentType.toLowerCase().includes(type))
+  }
+
+  const decodeBase64 = (base64Str: string): string => {
     try {
-      const parsed = JSON.parse(response.body)
-      return JSON.stringify(parsed, null, 2)
+      return atob(base64Str)
     } catch {
-      return response.body
+      return base64Str
     }
-  }, [response?.body])
+  }
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
+  }
+
+  const formattedResponseBody = useMemo((): { isPreviewable: boolean; content?: string; size?: string; type?: string } | null => {
+    if (!response?.body) return null
+    
+    const contentType = response.headers?.['content-type'] || ''
+    
+    // 非文本类型
+    if (!isTextContent(contentType)) {
+      const size = response.body.length
+      return {
+        isPreviewable: false,
+        size: formatBytes(size),
+        type: contentType || 'application/octet-stream'
+      }
+    }
+    
+    // 文本类型：解码 base64
+    const decoded = decodeBase64(response.body)
+    
+    // 尝试格式化 JSON
+    if (contentType.includes('json')) {
+      try {
+        const parsed = JSON.parse(decoded)
+        return { isPreviewable: true, content: JSON.stringify(parsed, null, 2) }
+      } catch {
+        return { isPreviewable: true, content: decoded }
+      }
+    }
+    
+    return { isPreviewable: true, content: decoded }
+  }, [response?.body, response?.headers])
 
   return (
     <div className="border-t bg-card">
@@ -384,11 +430,23 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                 <>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold text-muted-foreground uppercase">Response Body</span>
-                    {response.body.trim().startsWith('{') && <Badge variant="outline" className="text-[10px]">JSON</Badge>}
+                    {formattedResponseBody && 'content' in formattedResponseBody && formattedResponseBody.content.trim().startsWith('{') && (
+                      <Badge variant="outline" className="text-[10px]">JSON</Badge>
+                    )}
                   </div>
-                  <pre className="text-xs font-mono p-4 bg-muted/50 rounded-lg border overflow-auto whitespace-pre-wrap leading-relaxed">
-                    {formattedResponseBody}
-                  </pre>
+                  {formattedResponseBody && 'isPreviewable' in formattedResponseBody ? (
+                    formattedResponseBody.isPreviewable ? (
+                      <pre className="text-xs font-mono p-4 bg-muted/50 rounded-lg border overflow-auto whitespace-pre-wrap leading-relaxed">
+                        {formattedResponseBody.content}
+                      </pre>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                        <div className="text-sm mb-2">无法预览此类型文件</div>
+                        <div className="text-xs">类型: {formattedResponseBody.type}</div>
+                        <div className="text-xs">大小: {formattedResponseBody.size}</div>
+                      </div>
+                    )
+                  ) : null}
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
