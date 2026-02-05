@@ -173,12 +173,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
 
   const formattedRequestBody = useMemo(() => {
     if (!request.body) return null
-    try {
-      const parsed = JSON.parse(request.body)
-      return JSON.stringify(parsed, null, 2)
-    } catch {
-      return request.body
-    }
+    return decodeBase64(request.body)
   }, [request.body])
 
   const isTextContent = (contentType: string): boolean => {
@@ -228,17 +223,6 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
     
     // 文本类型：解码 base64
     const decoded = decodeBase64(response.body)
-    
-    // 尝试格式化 JSON
-    if (contentType.includes('json')) {
-      try {
-        const parsed = JSON.parse(decoded)
-        return { isPreviewable: true, content: JSON.stringify(parsed, null, 2) }
-      } catch {
-        return { isPreviewable: true, content: decoded }
-      }
-    }
-    
     return { isPreviewable: true, content: decoded }
   }, [response?.body, response?.headers])
 
@@ -395,10 +379,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
             <div className="p-4">
               {request.body ? (
                 <>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold text-muted-foreground uppercase">Request Payload</span>
-                    {request.body.trim().startsWith('{') && <Badge variant="outline" className="text-[10px]">JSON</Badge>}
-                  </div>
+                  <div className="text-[11px] font-bold text-muted-foreground uppercase mb-2">Request Payload</div>
                   <pre className="text-xs font-mono p-4 bg-muted/50 rounded-lg border overflow-auto whitespace-pre-wrap leading-relaxed">
                     {formattedRequestBody}
                   </pre>
@@ -417,12 +398,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
             <div className="p-4">
               {response?.body ? (
                 <>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold text-muted-foreground uppercase">Response Body</span>
-                    {formattedResponseBody && 'content' in formattedResponseBody && formattedResponseBody.content && formattedResponseBody.content.trim().startsWith('{') && (
-                      <Badge variant="outline" className="text-[10px]">JSON</Badge>
-                    )}
-                  </div>
+                  <div className="text-[11px] font-bold text-muted-foreground uppercase mb-2">Response Body</div>
                   {formattedResponseBody && 'isPreviewable' in formattedResponseBody ? (
                     formattedResponseBody.isPreviewable && formattedResponseBody.content ? (
                       <pre className="text-xs font-mono p-4 bg-muted/50 rounded-lg border overflow-auto whitespace-pre-wrap leading-relaxed">
