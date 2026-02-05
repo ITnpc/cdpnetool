@@ -210,7 +210,12 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
 
   const decodeBase64 = (base64Str: string): string => {
     try {
-      return atob(base64Str)
+      const binaryString = atob(base64Str)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+      return new TextDecoder('utf-8').decode(bytes)
     } catch {
       return base64Str
     }
