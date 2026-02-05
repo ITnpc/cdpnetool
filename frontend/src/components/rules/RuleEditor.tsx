@@ -101,7 +101,7 @@ export function RuleEditor({
     <div className={`border rounded-lg bg-card overflow-hidden ${!rule.enabled ? 'opacity-60' : ''}`}>
       {/* 折叠头部 */}
       <div
-        className="flex items-center gap-3 p-3 bg-muted/50 cursor-pointer hover:bg-muted/70 transition-colors"
+        className="flex items-center gap-2 px-3 py-2 bg-muted/50 cursor-pointer hover:bg-muted/70 transition-colors"
         onClick={onToggleExpand}
       >
         <GripVertical className="w-4 h-4 text-muted-foreground cursor-grab" />
@@ -110,40 +110,35 @@ export function RuleEditor({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="h-6 w-6"
           onClick={toggleEnabled}
           title={rule.enabled ? t('rules.enabled') : t('rules.disabled')}
         >
           {rule.enabled ? (
-            <Power className="w-4 h-4 text-green-500" />
+            <Power className="w-3.5 h-3.5 text-green-500" />
           ) : (
-            <PowerOff className="w-4 h-4 text-muted-foreground" />
+            <PowerOff className="w-3.5 h-3.5 text-muted-foreground" />
           )}
         </Button>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium truncate">{rule.name || rule.id}</span>
-            <Badge variant="outline" className="text-xs">
-              {rule.stage === 'request' ? t('rules.requestStage') : t('rules.responseStage')}
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <span className="font-medium text-sm truncate">{rule.name || rule.id}</span>
+          <Badge variant="secondary" className="text-xs shrink-0">
+            {t('rules.priority')} {rule.priority}
+          </Badge>
+          {hasTerminalAction && (
+            <Badge variant="destructive" className="text-xs shrink-0">
+              {t('rules.terminal')}
             </Badge>
-            <Badge variant="secondary" className="text-xs">
-              {t('rules.priority')} {rule.priority}
-            </Badge>
-            {hasTerminalAction && (
-              <Badge variant="destructive" className="text-xs">
-                {t('rules.terminal')}
-              </Badge>
-            )}
-          </div>
-          <div className="text-xs text-muted-foreground mt-0.5">
+          )}
+          <span className="text-xs text-muted-foreground shrink-0">
             {conditionCount} {t('rules.conditions')} · {actionsSummary}
-          </div>
+          </span>
         </div>
 
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); onRemove() }}>
-            <Trash2 className="w-4 h-4" />
+        <div className="flex items-center gap-1 shrink-0">
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onRemove() }}>
+            <Trash2 className="w-3.5 h-3.5" />
           </Button>
           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </div>
