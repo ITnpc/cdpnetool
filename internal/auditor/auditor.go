@@ -26,6 +26,18 @@ func New(events chan domain.NetworkEvent, l logger.Logger) *Auditor {
 	}
 }
 
+// NewDisabled 创建一个默认禁用的审计员
+func NewDisabled(events chan domain.NetworkEvent, l logger.Logger) *Auditor {
+	if l == nil {
+		l = logger.NewNop()
+	}
+	return &Auditor{
+		enabled: false,
+		events:  events,
+		log:     l,
+	}
+}
+
 // SetEnabled 设置是否启用审计
 func (a *Auditor) SetEnabled(enabled bool) {
 	a.enabled = enabled

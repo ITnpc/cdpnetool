@@ -79,7 +79,7 @@ func (o *Orchestrator) StartSession(ctx context.Context, cfg domain.SessionConfi
 	// 初始化各层组件
 	eng := engine.New(&rulespec.Config{})
 	matchedAud := auditor.New(events, o.log)
-	trafficAud := auditor.New(trafficChan, o.log)
+	trafficAud := auditor.NewDisabled(trafficChan, o.log)
 	trk := tracker.New(time.Duration(cfg.ProcessTimeoutMS)*time.Millisecond, o.log)
 	proc := processor.New(trk, eng, matchedAud, trafficAud, o.log)
 
