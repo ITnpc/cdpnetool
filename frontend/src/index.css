@@ -67,23 +67,19 @@
   }
 }
 
-/* 自定义滚动条 */
+/* 桌面应用风格：完全隐藏滚动条 */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  display: none;
 }
 
-::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
+/* Firefox */
+* {
+  scrollbar-width: none;
 }
 
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+/* IE/Edge */
+* {
+  -ms-overflow-style: none;
 }
 
 /* 允许特定区域选择文本 */

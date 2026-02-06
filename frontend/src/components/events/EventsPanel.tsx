@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   Search, 
@@ -254,7 +253,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
         </TabsList>
 
         <TabsContent value="headers" className="m-0">
-          <div className="max-h-[400px] overflow-auto">
+          <div className="max-h-[300px] overflow-auto">
             <div className="p-4 space-y-2">
               {/* 常规 (General) */}
               <section className="border-b border-muted/30 pb-2">
@@ -391,11 +390,11 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                   <div className="text-[11px] font-bold text-muted-foreground uppercase">{t('events.payload.title')}</div>
                   <CopyButton content={formattedRequestBody || ''} />
                 </div>
-                <ScrollArea className="h-[200px]">
+                <div className="max-h-[300px] overflow-auto">
                   <pre className="text-xs font-mono p-4 bg-muted/50 rounded-lg border break-all leading-relaxed" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                     {formattedRequestBody}
                   </pre>
-                </ScrollArea>
+                </div>
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -417,11 +416,11 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                 </div>
                 {formattedResponseBody && 'isPreviewable' in formattedResponseBody ? (
                   formattedResponseBody.isPreviewable && formattedResponseBody.content ? (
-                    <ScrollArea className="h-[200px]">
+                    <div className="max-h-[300px] overflow-auto">
                       <pre className="text-xs font-mono p-4 bg-muted/50 rounded-lg border break-all leading-relaxed" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                         {formattedResponseBody.content}
                       </pre>
-                    </ScrollArea>
+                    </div>
                   ) : !formattedResponseBody.isPreviewable ? (
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                       <div className="text-sm mb-2">{t('events.response.cannotPreview')}</div>

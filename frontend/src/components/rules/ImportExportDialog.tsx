@@ -1,6 +1,5 @@
 import { useRef } from 'react'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   FileUp, 
@@ -94,7 +93,7 @@ export function ImportExportDialog({
           </TabsContent>
           
           <TabsContent value="export" className="m-0 flex-1 flex flex-col min-h-0 data-[state=inactive]:hidden">
-            <ScrollArea className="flex-1 p-4">
+            <div className="flex-1 overflow-auto p-4">
               <div className="space-y-2">
                 {ruleSets.map(config => (
                   <div key={config.id} className="flex items-center justify-between p-2 rounded-lg border bg-card hover:bg-muted/30 transition-colors group">
@@ -118,7 +117,7 @@ export function ImportExportDialog({
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </TabsContent>
         </Tabs>
         
