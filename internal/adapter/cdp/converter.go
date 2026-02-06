@@ -51,8 +51,19 @@ func ToNeutralRequest(ev *fetch.RequestPausedReply) *domain.Request {
 		}
 	}
 
-	// 处理请求体 (PostData)
-	if ev.Request.PostData != nil {
+	// 处理请求体 (优先使用 PostDataEntries，处理大数据场景)
+	if len(ev.Request.PostDataEntries) > 0 {
+		var bodyParts []string
+		for _, entry := range ev.Request.PostDataEntries {
+			if entry.Bytes != nil {
+				bodyParts = append(bodyParts, *entry.Bytes)
+			}
+		}
+		if len(bodyParts) > 0 {
+			req.Body = []byte(strings.Join(bodyParts, ""))
+		}
+	} else if ev.Request.PostData != nil {
+		// 向后兼容：使用 PostData（已废弃但仍然支持）
 		req.Body = []byte(*ev.Request.PostData)
 	}
 
