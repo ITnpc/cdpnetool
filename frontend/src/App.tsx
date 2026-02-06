@@ -58,6 +58,16 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [isLaunchingBrowser, setIsLaunchingBrowser] = useState(false)
   const [appVersion, setAppVersion] = useState('')
+  const [activeTab, setActiveTab] = useState('targets')
+
+  // 监听 Tab 切换，离开请求预览时自动停止捕获
+  const handleTabChange = async (value: string) => {
+    // 离开请求预览页面时，静默停止捕获（不显示提示）
+    if (activeTab === 'network' && value !== 'network' && isTrafficCapturing) {
+      await handleToggleTrafficCapture(false, true)
+    }
+    setActiveTab(value)
+  }
 
   // 获取版本号
   useEffect(() => {
@@ -163,16 +173,18 @@ function App() {
   }
 
   // 切换全量流量捕获
-  const handleToggleTrafficCapture = async (enabled: boolean) => {
+  const handleToggleTrafficCapture = async (enabled: boolean, silent = false) => {
     if (!sessionId) return
     try {
       const result = await api.session.enableTrafficCapture(sessionId, enabled)
       if (result?.success) {
         setTrafficCapturing(enabled)
-        toast({ 
-          variant: enabled ? 'success' : 'default',
-          title: enabled ? 'Start Capture' : 'Stop Capture',
-        })
+        if (!silent) {
+          toast({ 
+            variant: enabled ? 'success' : 'default',
+            title: enabled ? 'Start Capture' : 'Stop Capture',
+          })
+        }
       } else {
         toast({ variant: 'destructive', title: t('errors.title'), description: getErrorMessage(result, t) })
       }
@@ -259,7 +271,7 @@ function App() {
 
       {/* 主内容区 */}
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-        <Tabs defaultValue="targets" className="flex-1 flex flex-col min-h-0">
+        <Tabs defaultValue="targets" value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0">
           <div className="border-b px-4">
             <TabsList className="h-10">
               <TabsTrigger value="targets" className="gap-2">

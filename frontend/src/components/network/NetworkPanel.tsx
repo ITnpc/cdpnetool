@@ -175,11 +175,11 @@ function TrafficItem({ event, isExpanded, onToggleExpand }: { event: NetworkEven
 function TrafficDetailView({ request, response }: { request: TrafficRequest, response?: TrafficResponse }) {
   const { t } = useTranslation()
   
-  // 状态管理：默认展开常规和请求标头
+  // 状态管理：默认展开常规和响应标头，请求标头默认收起
   const [collapsed, setCollapsed] = useState({
     general: false,
     responseHeaders: true,
-    requestHeaders: false,
+    requestHeaders: true,
   })
 
   const toggleSection = (key: keyof typeof collapsed) => {
