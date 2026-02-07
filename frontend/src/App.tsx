@@ -143,7 +143,7 @@ function App() {
           toast({
             variant: 'success',
             title: t('common.connected'),
-            description: `ID: ${result.data.sessionId.slice(0, 8)}...`,
+            description: `ID: ${result.data.sessionId}`,
           })
           await refreshTargets()
         } else {
@@ -353,7 +353,7 @@ function App() {
         </Button>
         <span>cdpnetool v{appVersion}</span>
         <span className="mx-2">|</span>
-        <span>Session: {sessionId?.slice(0, 8) || '-'}</span>
+        <span>Session: {sessionId || '-'}</span>
       </div>
       
       <Toaster />

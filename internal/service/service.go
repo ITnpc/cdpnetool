@@ -18,6 +18,7 @@ import (
 	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
 
+	"github.com/google/uuid"
 	"github.com/mafredri/cdp/protocol/fetch"
 )
 
@@ -65,7 +66,7 @@ func (o *Orchestrator) StartSession(ctx context.Context, cfg domain.SessionConfi
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	id := domain.SessionID(fmt.Sprintf("osess_%d", time.Now().UnixNano()))
+	id := domain.SessionID(fmt.Sprintf("sess_%s", uuid.New().String()[:8]))
 
 	sessionCtx, cancel := context.WithCancel(ctx)
 
