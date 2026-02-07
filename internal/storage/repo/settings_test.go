@@ -110,14 +110,6 @@ func TestSettingsRepo_DeleteByKey(t *testing.T) {
 func TestSettingsRepo_PresetKeys(t *testing.T) {
 	r := setupSettingsTestDB(t)
 
-	// 测试 DevToolsURL
-	expectedURL := "http://localhost:9999"
-	r.SetDevToolsURL(context.Background(), expectedURL)
-	actualURL := r.GetDevToolsURL(context.Background())
-	if actualURL != expectedURL {
-		t.Errorf("DevToolsURL 预期 %s，实际 %s", expectedURL, actualURL)
-	}
-
 	// 测试 Theme
 	expectedTheme := "dark"
 	r.SetTheme(context.Background(), expectedTheme)
@@ -126,14 +118,34 @@ func TestSettingsRepo_PresetKeys(t *testing.T) {
 		t.Errorf("Theme 预期 %s，实际 %s", expectedTheme, actualTheme)
 	}
 
-	// 测试默认值
-	defaultURL := r.GetDevToolsURL(context.Background())
-	r.DeleteByKey(context.Background(), model.SettingKeyDevToolsURL)
-	resetURL := r.GetDevToolsURL(context.Background())
-	if resetURL == defaultURL {
-		// 应该返回默认值 "http://localhost:9222"
-		if resetURL != "http://localhost:9222" {
-			t.Errorf("DevToolsURL 默认值不符合预期，实际为 %s", resetURL)
-		}
+	// 测试 Language
+	expectedLang := "en"
+	r.SetLanguage(context.Background(), expectedLang)
+	actualLang := r.GetLanguage(context.Background())
+	if actualLang != expectedLang {
+		t.Errorf("Language 预期 %s，实际 %s", expectedLang, actualLang)
+	}
+
+	// 测试 BrowserPath
+	expectedPath := "/usr/bin/chromium"
+	r.SetBrowserPath(context.Background(), expectedPath)
+	actualPath := r.GetBrowserPath(context.Background())
+	if actualPath != expectedPath {
+		t.Errorf("BrowserPath 预期 %s，实际 %s", expectedPath, actualPath)
+	}
+
+	// 测试 LastConfigID
+	expectedConfigID := "config-test-123"
+	r.SetLastConfigID(context.Background(), expectedConfigID)
+	actualConfigID := r.GetLastConfigID(context.Background())
+	if actualConfigID != expectedConfigID {
+		t.Errorf("LastConfigID 预期 %s，实际 %s", expectedConfigID, actualConfigID)
+	}
+
+	// 测试默认值 - Theme
+	r.DeleteByKey(context.Background(), model.SettingKeyTheme)
+	resetTheme := r.GetTheme(context.Background())
+	if resetTheme != "system" {
+		t.Errorf("Theme 默认值应为 system，实际为 %s", resetTheme)
 	}
 }
