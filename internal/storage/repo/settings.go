@@ -2,7 +2,6 @@ package repo
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"cdpnetool/internal/config"
@@ -89,16 +88,6 @@ func (r *SettingsRepo) SetMultiple(ctx context.Context, kvs map[string]string) e
 	})
 }
 
-// GetDevToolsURL 获取 DevTools URL
-func (r *SettingsRepo) GetDevToolsURL(ctx context.Context) string {
-	return r.GetWithDefault(ctx, model.SettingKeyDevToolsURL, "http://localhost:9222")
-}
-
-// SetDevToolsURL 设置 DevTools URL
-func (r *SettingsRepo) SetDevToolsURL(ctx context.Context, url string) error {
-	return r.Set(ctx, model.SettingKeyDevToolsURL, url)
-}
-
 // GetTheme 获取主题
 func (r *SettingsRepo) GetTheme(ctx context.Context) string {
 	return r.GetWithDefault(ctx, model.SettingKeyTheme, "system")
@@ -128,13 +117,10 @@ func (r *SettingsRepo) GetAllWithDefaults(ctx context.Context) (map[string]strin
 
 	defaults := config.GetDefaultSettings()
 	result := map[string]string{
-		model.SettingKeyLanguage:       defaults.Language,
-		model.SettingKeyTheme:          defaults.Theme,
-		model.SettingKeyDevToolsURL:    defaults.DevToolsURL,
-		model.SettingKeyBrowserArgs:    defaults.BrowserArgs,
-		model.SettingKeyBrowserPath:    defaults.BrowserPath,
-		model.SettingKeyLogLevel:       defaults.LogLevel,
-		model.SettingKeyNetworkTimeout: strconv.Itoa(defaults.NetworkTimeout),
+		model.SettingKeyLanguage:    defaults.Language,
+		model.SettingKeyTheme:       defaults.Theme,
+		model.SettingKeyBrowserArgs: defaults.BrowserArgs,
+		model.SettingKeyBrowserPath: defaults.BrowserPath,
 	}
 
 	// 用数据库中的值覆盖默认值

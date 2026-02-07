@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
+	"strings"
 	"time"
 
 	"cdpnetool/internal/browser"
@@ -415,10 +415,28 @@ func (a *App) LaunchBrowser(headless bool) api.Response[BrowserData] {
 		a.browser = nil
 	}
 
+	// 从数据库读取浏览器设置
+	browserPath := a.settingsRepo.GetBrowserPath(a.ctx)
+	browserArgsStr := a.settingsRepo.GetBrowserArgs(a.ctx)
+
+	// 解析浏览器参数（按换行分割）
+	var browserArgs []string
+	if browserArgsStr != "" {
+		lines := strings.Split(browserArgsStr, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				browserArgs = append(browserArgs, line)
+			}
+		}
+	}
+
 	opts := browser.Options{
 		Logger:        a.log,
 		Headless:      headless,
 		ClearUserData: true,
+		ExecPath:      browserPath,
+		Args:          browserArgs,
 	}
 
 	b, err := browser.Start(a.ctx, opts)
@@ -745,13 +763,10 @@ func (a *App) ResetSettings() api.Response[SettingsData] {
 	defaults := config.GetDefaultSettings()
 
 	settings := map[string]string{
-		model.SettingKeyLanguage:       defaults.Language,
-		model.SettingKeyTheme:          defaults.Theme,
-		model.SettingKeyDevToolsURL:    defaults.DevToolsURL,
-		model.SettingKeyBrowserArgs:    defaults.BrowserArgs,
-		model.SettingKeyBrowserPath:    defaults.BrowserPath,
-		model.SettingKeyLogLevel:       defaults.LogLevel,
-		model.SettingKeyNetworkTimeout: strconv.Itoa(defaults.NetworkTimeout),
+		model.SettingKeyLanguage:    defaults.Language,
+		model.SettingKeyTheme:       defaults.Theme,
+		model.SettingKeyBrowserArgs: defaults.BrowserArgs,
+		model.SettingKeyBrowserPath: defaults.BrowserPath,
 	}
 
 	err := a.settingsRepo.SetMultiple(ctx, settings)

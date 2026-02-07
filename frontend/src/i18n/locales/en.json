@@ -280,29 +280,12 @@
     },
     "browser": {
       "title": "Browser",
-      "devtoolsUrl": "DevTools URL",
-      "devtoolsUrlDesc": "Remote debugging URL for browser, default is http://localhost:9222",
       "args": "Extra Launch Args",
-      "argsDesc": "Additional command-line arguments for browser launch, empty means no extra args",
+      "argsDesc": "Additional command-line arguments for browser launch, one argument per line",
       "path": "Browser Path",
       "pathPlaceholder": "Empty means auto-detect system browser",
       "pathDesc": "Full path to browser executable, empty means auto-detect",
       "selectFile": "Select File"
-    },
-    "advanced": {
-      "title": "Advanced",
-      "logLevel": "Log Level",
-      "logLevelDebug": "Debug",
-      "logLevelInfo": "Info",
-      "logLevelWarn": "Warn",
-      "logLevelError": "Error",
-      "networkTimeout": "Network Timeout",
-      "networkTimeoutDesc": "Timeout for network requests (seconds)",
-      "logDirectory": "Log Directory",
-      "logDirectoryDesc": "Storage location for application log files (read-only)",
-      "dataDirectory": "Data Directory",
-      "dataDirectoryDesc": "Storage location for database files (read-only)",
-      "openFolder": "Open Folder"
     }
   }
 }

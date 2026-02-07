@@ -280,29 +280,12 @@
     },
     "browser": {
       "title": "浏览器设置",
-      "devtoolsUrl": "DevTools URL",
-      "devtoolsUrlDesc": "浏览器远程调试地址，默认 http://localhost:9222",
       "args": "额外启动参数",
-      "argsDesc": "浏览器启动时的额外命令行参数，空表示无额外参数",
+      "argsDesc": "浏览器启动时的额外命令行参数，每行一个参数",
       "path": "浏览器路径",
       "pathPlaceholder": "空表示自动检测系统浏览器",
       "pathDesc": "浏览器可执行文件的完整路径，空表示自动检测",
       "selectFile": "选择文件"
-    },
-    "advanced": {
-      "title": "高级设置",
-      "logLevel": "日志级别",
-      "logLevelDebug": "Debug",
-      "logLevelInfo": "Info",
-      "logLevelWarn": "Warn",
-      "logLevelError": "Error",
-      "networkTimeout": "网络超时",
-      "networkTimeoutDesc": "网络请求的超时时间（秒）",
-      "logDirectory": "日志目录",
-      "logDirectoryDesc": "应用日志文件的存储位置（只读）",
-      "dataDirectory": "数据目录",
-      "dataDirectoryDesc": "数据库文件的存储位置（只读）",
-      "openFolder": "打开文件夹"
     }
   }
 }
