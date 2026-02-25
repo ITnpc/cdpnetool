@@ -19,8 +19,6 @@
 
 cdpnetool 是一款强大的网络请求拦截工具，通过 Chrome DevTools Protocol 实现对浏览器 HTTP/HTTPS 请求的精准控制和灵活修改。无需安装证书，无需编写代码，通过可视化界面即可完成复杂的网络调试任务。
 
-📦 **配置分享**：[cdpnetool-configs](https://github.com/241x/cdpnetool-configs) - 下载社区配置或分享你的配置
-
 **核心特性：**
 - ✅ 实时拦截浏览器网络请求和响应
 - ✅ 可视化规则配置，支持丰富的匹配条件和修改行为
@@ -29,6 +27,10 @@ cdpnetool 是一款强大的网络请求拦截工具，通过 Chrome DevTools Pr
 - ✅ 请求预览：全量流量查看，支持开启/关闭捕获
 - ✅ 系统设置：语言切换（中/英）、主题模式、浏览器配置
 - ✅ 无需证书：基于 CDP 协议直接控制浏览器
+
+## 社区
+
+[cdpnetool-configs](https://github.com/241x/cdpnetool-configs) 您可以 **寻找您需要的配置** 或 **分享您创作的配置** 
 
 ## 快速开始
 
