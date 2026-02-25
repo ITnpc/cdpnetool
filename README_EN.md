@@ -19,8 +19,6 @@ English | [简体中文](./README.md)
 
 cdpnetool is a powerful network request interception tool that enables precise control and flexible modification of browser HTTP/HTTPS requests through the Chrome DevTools Protocol. No certificate installation, no code writing required - complete complex network debugging tasks through a visual interface.
 
-📦 **Configuration Sharing**: [cdpnetool-configs](https://github.com/241x/cdpnetool-configs) - Download community configs or share your own
-
 **Core Features:**
 - ✅ Real-time interception of browser network requests and responses
 - ✅ Visual rule configuration with rich matching conditions and modification behaviors
@@ -29,6 +27,10 @@ cdpnetool is a powerful network request interception tool that enables precise c
 - ✅ Request preview: full traffic viewing with capture on/off support
 - ✅ System settings: language switching (Chinese/English), theme mode, browser configuration
 - ✅ No certificate required: direct browser control based on CDP protocol
+
+## Community
+
+[cdpnetool-configs](https://github.com/241x/cdpnetool-configs) - **Find configurations you need** or **Share configurations you created**
 
 ## Quick Start
 
