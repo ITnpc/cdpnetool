@@ -15,6 +15,13 @@ English | [简体中文](./README.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/241x/cdpnetool)](https://github.com/241x/cdpnetool/releases)
 
+> [!CAUTION]
+> **⚠️ This project is no longer receiving new version updates.**
+>
+> We recommend switching to the **CLI version** — [twist](https://github.com/241x/twist), which will be actively maintained and updated. Feel free to use it and submit Issues!
+>
+> 👉 Repository: [https://github.com/241x/twist](https://github.com/241x/twist)
+
 ## Introduction
 
 cdpnetool is a powerful network request interception tool that enables precise control and flexible modification of browser HTTP/HTTPS requests through the Chrome DevTools Protocol. No certificate installation, no code writing required - complete complex network debugging tasks through a visual interface.
