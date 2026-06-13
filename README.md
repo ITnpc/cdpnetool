@@ -15,6 +15,13 @@
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/241x/cdpnetool)](https://github.com/241x/cdpnetool/releases)
 
+> [!CAUTION]
+> **⚠️ 本项目已停止新版本更新。**
+>
+> 推荐使用本程序的 **CLI 版本** —— [twist](https://github.com/241x/twist)，该版本将持续维护更新，欢迎前往使用并积极提交 Issue！
+>
+> 👉 仓库地址：[https://github.com/241x/twist](https://github.com/241x/twist)
+
 ## 简介
 
 cdpnetool 是一款强大的网络请求拦截工具，通过 Chrome DevTools Protocol 实现对浏览器 HTTP/HTTPS 请求的精准控制和灵活修改。无需安装证书，无需编写代码，通过可视化界面即可完成复杂的网络调试任务。
